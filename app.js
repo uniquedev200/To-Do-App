@@ -15,20 +15,32 @@ function getWorldNow() {
 }
 
 function getWorldToday() {
-  return getWorldNow().toISOString().slice(0, 10);
+  const d = getWorldNow();
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
 }
 
 function getWorldISO() {
-  return getWorldNow().toISOString();
+  const d = getWorldNow();
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
+  const s = String(d.getUTCSeconds()).padStart(2, '0');
+  const ms = String(d.getMilliseconds()).padStart(3, '0');
+  return y + '-' + m + '-' + day + 'T' + h + ':' + min + ':' + s + '.' + ms + '+05:30';
 }
 
 async function syncWorldTime() {
   if (timeSyncAttempted) return;
   timeSyncAttempted = true;
   try {
-    const r = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
+    const r = await fetch('https://worldtimeapi.org/api/timezone/Asia/Kolkata');
     const data = await r.json();
-    const worldMs = new Date(data.utc_datetime).getTime();
+    const worldMs = new Date(data.datetime).getTime();
     timeOffset = worldMs - Date.now();
     localStorage.setItem('jarvis_time_offset', String(timeOffset));
     timeSynced = true;
@@ -199,27 +211,27 @@ function renderPage(page) {
 /* ===== GREETING & CLOCK ===== */
 function updateClock() {
   const now = getWorldNow();
-  const hours = now.getUTCHours();
+  const hours = String(now.getUTCHours()).padStart(2, '0');
   const mins = String(now.getUTCMinutes()).padStart(2, '0');
   const secs = String(now.getUTCSeconds()).padStart(2, '0');
   const clock = document.getElementById('clock');
-  if (clock) clock.textContent = `${String(hours).padStart(2, '0')}:${mins}:${secs}`;
+  if (clock) clock.textContent = hours + ':' + mins + ':' + secs;
 
   const dateEl = document.getElementById('date');
   if (dateEl) {
-    const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' };
+    const opts = { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'Asia/Kolkata' };
     dateEl.textContent = now.toLocaleDateString('en-US', opts);
   }
 
   const greeting = document.getElementById('greeting');
   if (greeting) {
     let period = 'morning';
-    if (hours >= 12 && hours < 17) period = 'afternoon';
-    else if (hours >= 17) period = 'evening';
-    greeting.textContent = `Good ${period}, Commander.`;
+    const h = now.getUTCHours();
+    if (h >= 12 && h < 17) period = 'afternoon';
+    else if (h >= 17) period = 'evening';
+    greeting.textContent = 'Good ' + period + ', Commander.';
   }
 
-  // Check for overdue rollover once per minute
   const minuteKey = now.getUTCFullYear() + '-' + now.getUTCMonth() + '-' + now.getUTCDate() + '-' + now.getUTCHours() + '-' + now.getUTCMinutes();
   if (minuteKey !== lastRolloverCheck) {
     lastRolloverCheck = minuteKey;
@@ -460,10 +472,14 @@ function renderOverview() {
   }
 
   // Upcoming 7 days
-  const today = getWorldNow();
-  const sevenDays = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today.getTime() + i * 86400000);
-    return d.toISOString().slice(0, 10);
+  const now = getWorldNow();
+  const todayMs = now.getTime() - (now.getUTCHours() * 3600000 + now.getUTCMinutes() * 60000 + now.getUTCSeconds() * 1000);
+  const sevenDays = Array.from({ length: 7 }, function (_, i) {
+    const d = new Date(todayMs + i * 86400000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
   });
   const upcoming = tasks.filter(t => t.due && !t.done && sevenDays.includes(t.due))
     .sort((a, b) => a.due.localeCompare(b.due));
@@ -473,8 +489,8 @@ function renderOverview() {
     upcomingContainer.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">✓</div><p>All clear. No deadlines this week.</p></div>';
   } else {
     upcomingContainer.innerHTML = upcoming.map(t => {
-      const dueDate = new Date(t.due + 'T00:00:00');
-      const dayName = dueDate.toLocaleDateString('en-US', { weekday: 'short' });
+      const dueDate = new Date(t.due + 'T00:00:00+05:30');
+      const dayName = dueDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
       return `
         <div class="upcoming-item">
           <span class="upcoming-date">${dayName} ${t.due.slice(5)}</span>
@@ -514,7 +530,7 @@ function renderApiExports() {
         priority: t.priority,
         category: t.category,
         due: t.due,
-        days_overdue: Math.max(0, Math.floor((new Date(today) - new Date(t.due)) / 86400000)),
+        days_overdue: Math.max(0, Math.floor((new Date(today + 'T00:00:00+05:30') - new Date(t.due + 'T00:00:00+05:30')) / 86400000)),
       })),
     },
   };

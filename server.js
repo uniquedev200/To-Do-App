@@ -77,9 +77,33 @@ function initDatabase() {
 
 /* ===== API Routes ===== */
 
-// Health check
+// Health check — lightweight, for continuous uptime monitoring
+app.get('/health', function (req, res) {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + istOffset);
+  const pad2 = function (n) { return String(n).padStart(2, '0'); };
+  res.json({
+    status: 'ok',
+    timezone: 'Asia/Kolkata',
+    timestamp: now.toISOString(),
+    ist: ist.getUTCFullYear() + '-' + pad2(ist.getUTCMonth() + 1) + '-' + pad2(ist.getUTCDate()) + 'T' + pad2(ist.getUTCHours()) + ':' + pad2(ist.getUTCMinutes()) + ':' + pad2(ist.getUTCSeconds()) + '+05:30',
+  });
+});
+
 app.get('/api/health', function (req, res) {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + istOffset);
+  const pad2 = function (n) { return String(n).padStart(2, '0'); };
+  res.json({
+    status: 'ok',
+    timezone: 'Asia/Kolkata',
+    timestamp: now.toISOString(),
+    ist: ist.getUTCFullYear() + '-' + pad2(ist.getUTCMonth() + 1) + '-' + pad2(ist.getUTCDate()) + 'T' + pad2(ist.getUTCHours()) + ':' + pad2(ist.getUTCMinutes()) + ':' + pad2(ist.getUTCSeconds()) + '+05:30',
+  });
 });
 
 /* ----- Tasks ----- */
@@ -197,6 +221,13 @@ app.delete('/api/memories/:id', function (req, res) {
 
 /* ----- Export / Sync ----- */
 
+function istISO() {
+  const now = new Date();
+  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const p2 = function (n) { return String(n).padStart(2, '0'); };
+  return ist.getUTCFullYear() + '-' + p2(ist.getUTCMonth() + 1) + '-' + p2(ist.getUTCDate()) + 'T' + p2(ist.getUTCHours()) + ':' + p2(ist.getUTCMinutes()) + ':' + p2(ist.getUTCSeconds()) + '+05:30';
+}
+
 // GET /api/export — full context for AI consumption
 app.get('/api/export', function (req, res) {
   const activePromise = pool.query('SELECT title, priority, category, due, notes FROM tasks WHERE done = false ORDER BY created DESC');
@@ -214,7 +245,7 @@ app.get('/api/export', function (req, res) {
       const overdueCount = overdueResult.rows[0].count;
 
       res.json({
-        generated: new Date().toISOString(),
+        generated: istISO(),
         memories: memories.map(function (m) {
           return { type: m.type, title: m.title, content: m.content, tags: m.tags || [] };
         }),
