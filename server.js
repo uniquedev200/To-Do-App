@@ -21,6 +21,37 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+/* ===== IST Utilities ===== */
+
+/**
+ * Returns the current time as an IST ISO-8601 string.
+ * Uses Intl.DateTimeFormat — no manual offset math, no DST bugs.
+ * Works correctly regardless of the server's system timezone (e.g. UTC on Render).
+ */
+function istISO() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+
+  const get = (type) => parts.find((p) => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}+05:30`;
+}
+
+/**
+ * Returns today's date in IST as YYYY-MM-DD.
+ * Critical for overdue comparisons — avoids UTC date being 1 day behind IST.
+ */
+function istDateString() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()); // en-CA locale produces YYYY-MM-DD naturally
+}
+
 /* ===== PostgreSQL Connection ===== */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -39,6 +70,13 @@ pool.connect(function (err) {
 
 /* ===== Database Initialization ===== */
 function initDatabase() {
+  // Set the session timezone to IST so NOW(), CURRENT_DATE, etc. all return IST values.
+  // This runs once on startup; individual queries inherit the pool's default timezone.
+  pool.query("SET TIME ZONE 'Asia/Kolkata'", function (tzErr) {
+    if (tzErr) console.error('Failed to set timezone:', tzErr.message);
+    else console.log('PostgreSQL session timezone set to Asia/Kolkata (IST).');
+  });
+
   const createTables = `
     CREATE TABLE IF NOT EXISTS tasks (
       id BIGINT PRIMARY KEY,
@@ -48,8 +86,8 @@ function initDatabase() {
       due TEXT,
       notes TEXT DEFAULT '',
       done BOOLEAN DEFAULT false,
-      completed_at TIMESTAMP,
-      created TIMESTAMP DEFAULT NOW()
+      completed_at TIMESTAMP WITH TIME ZONE,
+      created TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS memories (
@@ -58,7 +96,7 @@ function initDatabase() {
       type TEXT DEFAULT 'note',
       content TEXT DEFAULT '',
       tags TEXT[] DEFAULT '{}',
-      created TIMESTAMP DEFAULT NOW()
+      created TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
   `;
 
@@ -67,50 +105,55 @@ function initDatabase() {
       console.error('Failed to initialize database tables:', err.message);
     } else {
       console.log('Database tables initialized.');
-      // Add completed_at column if it doesn't exist (migration for existing installs)
-      pool.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP', function (migrateErr) {
-        if (migrateErr) console.error('Migration warning:', migrateErr.message);
-      });
+      pool.query(
+        'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE',
+        function (migrateErr) {
+          if (migrateErr) console.error('Migration warning:', migrateErr.message);
+        }
+      );
     }
+  });
+}
+
+/**
+ * Wraps pool.query to ensure every query runs in the IST timezone.
+ * Render spins up fresh DB connections that reset to UTC — this guarantees
+ * CURRENT_DATE, NOW(), and all timestamp operations are IST-aware per query.
+ */
+function queryIST(sql, params, callback) {
+  pool.connect(function (err, client, release) {
+    if (err) return callback(err);
+    client.query("SET LOCAL TIME ZONE 'Asia/Kolkata'", function (tzErr) {
+      if (tzErr) { release(); return callback(tzErr); }
+      client.query(sql, params, function (queryErr, result) {
+        release();
+        callback(queryErr, result);
+      });
+    });
   });
 }
 
 /* ===== API Routes ===== */
 
 // Health check — lightweight, for continuous uptime monitoring
-app.get('/health', function (req, res) {
+function healthResponse(res) {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const ist = new Date(now.getTime() + istOffset);
-  const pad2 = function (n) { return String(n).padStart(2, '0'); };
   res.json({
     status: 'ok',
     timezone: 'Asia/Kolkata',
-    timestamp: now.toISOString(),
-    ist: ist.getUTCFullYear() + '-' + pad2(ist.getUTCMonth() + 1) + '-' + pad2(ist.getUTCDate()) + 'T' + pad2(ist.getUTCHours()) + ':' + pad2(ist.getUTCMinutes()) + ':' + pad2(ist.getUTCSeconds()) + '+05:30',
+    timestamp: new Date().toISOString(),
+    ist: istISO(),
   });
-});
+}
 
-app.get('/api/health', function (req, res) {
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const ist = new Date(now.getTime() + istOffset);
-  const pad2 = function (n) { return String(n).padStart(2, '0'); };
-  res.json({
-    status: 'ok',
-    timezone: 'Asia/Kolkata',
-    timestamp: now.toISOString(),
-    ist: ist.getUTCFullYear() + '-' + pad2(ist.getUTCMonth() + 1) + '-' + pad2(ist.getUTCDate()) + 'T' + pad2(ist.getUTCHours()) + ':' + pad2(ist.getUTCMinutes()) + ':' + pad2(ist.getUTCSeconds()) + '+05:30',
-  });
-});
+app.get('/health', function (req, res) { healthResponse(res); });
+app.get('/api/health', function (req, res) { healthResponse(res); });
 
 /* ----- Tasks ----- */
 
 // GET /api/tasks
 app.get('/api/tasks', function (req, res) {
-  pool.query('SELECT * FROM tasks ORDER BY created DESC', function (err, result) {
+  queryIST('SELECT * FROM tasks ORDER BY created DESC', [], function (err, result) {
     if (err) return res.status(500).json({ error: err.message });
     res.json(result.rows);
   });
@@ -130,10 +173,10 @@ app.post('/api/tasks', function (req, res) {
     notes: notes || '',
     done: done || false,
     completedAt: completedAt || null,
-    created: created || new Date().toISOString(),
+    created: created || istISO(),
   };
 
-  pool.query(
+  queryIST(
     'INSERT INTO tasks (id, title, category, priority, due, notes, done, completed_at, created) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET title=$2, category=$3, priority=$4, due=$5, notes=$6, done=$7, completed_at=$8 RETURNING *',
     [task.id, task.title, task.category, task.priority, task.due, task.notes, task.done, task.completedAt, task.created],
     function (err, result) {
@@ -146,7 +189,7 @@ app.post('/api/tasks', function (req, res) {
 // PATCH /api/tasks/:id/toggle
 app.patch('/api/tasks/:id/toggle', function (req, res) {
   const id = Number(req.params.id);
-  pool.query(
+  queryIST(
     'UPDATE tasks SET done = NOT done, completed_at = CASE WHEN done = false THEN NOW() ELSE NULL END WHERE id = $1 RETURNING *',
     [id],
     function (err, result) {
@@ -160,7 +203,7 @@ app.patch('/api/tasks/:id/toggle', function (req, res) {
 // DELETE /api/tasks/:id
 app.delete('/api/tasks/:id', function (req, res) {
   const id = Number(req.params.id);
-  pool.query(
+  queryIST(
     'DELETE FROM tasks WHERE id = $1 RETURNING *',
     [id],
     function (err, result) {
@@ -175,7 +218,7 @@ app.delete('/api/tasks/:id', function (req, res) {
 
 // GET /api/memories
 app.get('/api/memories', function (req, res) {
-  pool.query('SELECT * FROM memories ORDER BY created DESC', function (err, result) {
+  queryIST('SELECT * FROM memories ORDER BY created DESC', [], function (err, result) {
     if (err) return res.status(500).json({ error: err.message });
     res.json(result.rows);
   });
@@ -192,10 +235,10 @@ app.post('/api/memories', function (req, res) {
     type: type || 'note',
     content,
     tags: tags || [],
-    created: created || new Date().toISOString(),
+    created: created || istISO(),
   };
 
-  pool.query(
+  queryIST(
     'INSERT INTO memories (id, title, type, content, tags, created) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET title=$2, type=$3, content=$4, tags=$5 RETURNING *',
     [memory.id, memory.title, memory.type, memory.content, memory.tags, memory.created],
     function (err, result) {
@@ -208,7 +251,7 @@ app.post('/api/memories', function (req, res) {
 // DELETE /api/memories/:id
 app.delete('/api/memories/:id', function (req, res) {
   const id = Number(req.params.id);
-  pool.query(
+  queryIST(
     'DELETE FROM memories WHERE id = $1 RETURNING *',
     [id],
     function (err, result) {
@@ -221,20 +264,26 @@ app.delete('/api/memories/:id', function (req, res) {
 
 /* ----- Export / Sync ----- */
 
-function istISO() {
-  const now = new Date();
-  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-  const p2 = function (n) { return String(n).padStart(2, '0'); };
-  return ist.getUTCFullYear() + '-' + p2(ist.getUTCMonth() + 1) + '-' + p2(ist.getUTCDate()) + 'T' + p2(ist.getUTCHours()) + ':' + p2(ist.getUTCMinutes()) + ':' + p2(ist.getUTCSeconds()) + '+05:30';
-}
-
 // GET /api/export — full context for AI consumption
 app.get('/api/export', function (req, res) {
-  const activePromise = pool.query('SELECT title, priority, category, due, notes FROM tasks WHERE done = false ORDER BY created DESC');
-  const donePromise = pool.query("SELECT title, priority, category, completed_at FROM tasks WHERE done = true AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 50");
-  const memoriesPromise = pool.query('SELECT type, title, content, tags FROM memories ORDER BY created DESC');
-  const statsPromise = pool.query("SELECT COUNT(*)::int AS total, SUM(CASE WHEN done = false THEN 1 ELSE 0 END)::int AS active, SUM(CASE WHEN done = true THEN 1 ELSE 0 END)::int AS done FROM tasks");
-  const overduePromise = pool.query("SELECT COUNT(*)::int AS count FROM tasks WHERE done = false AND due IS NOT NULL AND due::date < CURRENT_DATE");
+  const today = istDateString(); // IST-aware "today", not UTC
+
+  const activePromise = new Promise(function (resolve, reject) {
+    queryIST('SELECT title, priority, category, due, notes FROM tasks WHERE done = false ORDER BY created DESC', [], function (err, r) { err ? reject(err) : resolve(r); });
+  });
+  const donePromise = new Promise(function (resolve, reject) {
+    queryIST('SELECT title, priority, category, completed_at FROM tasks WHERE done = true AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 50', [], function (err, r) { err ? reject(err) : resolve(r); });
+  });
+  const memoriesPromise = new Promise(function (resolve, reject) {
+    queryIST('SELECT type, title, content, tags FROM memories ORDER BY created DESC', [], function (err, r) { err ? reject(err) : resolve(r); });
+  });
+  const statsPromise = new Promise(function (resolve, reject) {
+    queryIST('SELECT COUNT(*)::int AS total, SUM(CASE WHEN done = false THEN 1 ELSE 0 END)::int AS active, SUM(CASE WHEN done = true THEN 1 ELSE 0 END)::int AS done FROM tasks', [], function (err, r) { err ? reject(err) : resolve(r); });
+  });
+  // Use JS-computed IST date for overdue check — avoids CURRENT_DATE being UTC on Render
+  const overduePromise = new Promise(function (resolve, reject) {
+    queryIST('SELECT COUNT(*)::int AS count FROM tasks WHERE done = false AND due IS NOT NULL AND due < $1', [today], function (err, r) { err ? reject(err) : resolve(r); });
+  });
 
   Promise.all([activePromise, donePromise, memoriesPromise, statsPromise, overduePromise])
     .then(function ([activeResult, doneResult, memoriesResult, statsResult, overdueResult]) {
@@ -253,7 +302,7 @@ app.get('/api/export', function (req, res) {
         task_context: {
           active_count: stats.active,
           overdue_count: overdueCount,
-          overdue_tasks: active.filter(function (t) { return t.due && t.due < new Date().toISOString().slice(0, 10); }).map(function (t) {
+          overdue_tasks: active.filter(function (t) { return t.due && t.due < today; }).map(function (t) {
             return { title: t.title, priority: t.priority, category: t.category, due: t.due };
           }),
         },
@@ -296,13 +345,16 @@ app.post('/api/sync', function (req, res) {
         notes: t.notes || '',
         done: t.done || false,
         completedAt: t.completedAt || null,
-        created: t.created || new Date().toISOString(),
+        created: t.created || istISO(),
       };
       ops.push(
-        pool.query(
-          'INSERT INTO tasks (id, title, category, priority, due, notes, done, completed_at, created) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET title=$2, category=$3, priority=$4, due=$5, notes=$6, done=$7, completed_at=$8',
-          [task.id, task.title, task.category, task.priority, task.due, task.notes, task.done, task.completedAt, task.created]
-        )
+        new Promise(function (resolve, reject) {
+          queryIST(
+            'INSERT INTO tasks (id, title, category, priority, due, notes, done, completed_at, created) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET title=$2, category=$3, priority=$4, due=$5, notes=$6, done=$7, completed_at=$8',
+            [task.id, task.title, task.category, task.priority, task.due, task.notes, task.done, task.completedAt, task.created],
+            function (err, r) { err ? reject(err) : resolve(r); }
+          );
+        })
       );
     });
   }
@@ -315,13 +367,16 @@ app.post('/api/sync', function (req, res) {
         type: m.type || 'note',
         content: m.content || '',
         tags: m.tags || [],
-        created: m.created || new Date().toISOString(),
+        created: m.created || istISO(),
       };
       ops.push(
-        pool.query(
-          'INSERT INTO memories (id, title, type, content, tags, created) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET title=$2, type=$3, content=$4, tags=$5',
-          [memory.id, memory.title, memory.type, memory.content, memory.tags, memory.created]
-        )
+        new Promise(function (resolve, reject) {
+          queryIST(
+            'INSERT INTO memories (id, title, type, content, tags, created) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET title=$2, type=$3, content=$4, tags=$5',
+            [memory.id, memory.title, memory.type, memory.content, memory.tags, memory.created],
+            function (err, r) { err ? reject(err) : resolve(r); }
+          );
+        })
       );
     });
   }
@@ -353,4 +408,5 @@ app.use(function (req, res) {
 app.listen(PORT, function () {
   console.log('JARVIS server running on http://localhost:' + PORT);
   console.log('API available at http://localhost:' + PORT + '/api');
+  console.log('IST time on startup: ' + istISO());
 });
