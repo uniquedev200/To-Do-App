@@ -674,6 +674,63 @@ function pullFromBackend() {
   });
 }
 
+/* ===== MANUAL SYNC & HARD RESET ===== */
+function updateSyncStatus(state, msg) {
+  var el = document.getElementById('sync-status');
+  if (!el) return;
+  el.setAttribute('data-state', state);
+  var labels = { idle: 'Idle', syncing: 'Syncing…', success: 'Synced ✓', error: 'Failed ✕' };
+  el.textContent = msg || labels[state] || state;
+}
+
+function updateSyncStats() {
+  var te = document.getElementById('sync-local-tasks');
+  var me = document.getElementById('sync-local-memories');
+  if (te) te.textContent = getTasks().length;
+  if (me) me.textContent = getMemories().length;
+}
+
+function manualSync() {
+  if (!navigator.onLine) { showToast('You are offline', 'error'); return; }
+  var btn = document.getElementById('sync-now-btn');
+  if (btn) btn.disabled = true;
+  updateSyncStatus('syncing');
+  var lastEl = document.getElementById('sync-last');
+  if (lastEl) lastEl.textContent = 'Syncing…';
+
+  syncToBackend();
+  setTimeout(function () {
+    pullFromBackend();
+    setTimeout(function () {
+      updateSyncStatus('success');
+      updateSyncStats();
+      if (lastEl) lastEl.textContent = 'Last sync: ' + getWorldISO();
+      if (btn) btn.disabled = false;
+      showToast('Sync complete ✓', 'success');
+    }, 1000);
+  }, 1500);
+}
+
+function hardReset() {
+  if (!confirm('This will delete ALL local data and clear the remote database. Are you sure?')) return;
+  if (!confirm('This cannot be undone. Continue?')) return;
+  localStorage.removeItem('jarvis_tasks');
+  localStorage.removeItem('jarvis_memories');
+  updateSyncStats();
+  var lastEl = document.getElementById('sync-last');
+  if (lastEl) lastEl.textContent = 'Last sync: —';
+  updateSyncStatus('idle', 'Reset');
+  showToast('Local data cleared', 'info');
+  renderPage(currentPage);
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    fetch(CONFIG.JARVIS_API_URL + '/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tasks: [], memories: [] }),
+    }).then(function () { showToast('Remote database cleared', 'info'); }).catch(function () {});
+  }
+}
+
 /* ===== EVENT SETUP ===== */
 function setupEvents() {
   document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(el => {
@@ -880,6 +937,11 @@ function setupEvents() {
     console.log('Sent to Jarvis API', { memories: getMemories(), tasks: getTasks().filter(t => !t.done) });
     showToast('Sent to Jarvis API ✓', 'success');
   });
+  document.getElementById('sync-now-btn').addEventListener('click', manualSync);
+  document.getElementById('hard-reset-btn').addEventListener('click', hardReset);
+  document.getElementById('sync-now-btn').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); manualSync(); }
+  });
 
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) metaTheme.content = '#050810';
@@ -944,13 +1006,15 @@ function init() {
   updateClock();
   setInterval(updateClock, 1000);
 
-  // Push local data to DB, then pull any cross-device changes
-  syncToBackend();
+  // Push local data to DB only if we have data (avoids clearing DB after hard reset)
+  var hasData = getTasks().length > 0 || getMemories().length > 0;
+  if (hasData) syncToBackend();
   setTimeout(pullFromBackend, 500);
   setInterval(pullFromBackend, 30000);
 
   rolloverOverdueTasks();
   setupEvents();
+  updateSyncStats();
   navigateTo('dashboard');
 }
 

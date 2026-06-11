@@ -237,7 +237,21 @@
           <span style="font-size:0.78rem;color:var(--text-muted)">Data is ready for AI consumption</span>
         </div>
 
-        <div class="api-notice">// Future: This will auto-sync to your Jarvis AI database on every change</div>
+        <section class="api-panel glass sync-panel">
+          <div class="sync-panel-header">
+            <h3>⬡ Sync to Database</h3>
+            <span class="sync-status" id="sync-status" data-state="idle">Idle</span>
+          </div>
+          <div class="sync-info">
+            <span class="sync-stat"><span id="sync-local-tasks">0</span> local tasks</span>
+            <span class="sync-stat"><span id="sync-local-memories">0</span> local memories</span>
+            <span class="sync-stat sync-last" id="sync-last">Last sync: —</span>
+          </div>
+          <div class="api-panel-actions">
+            <button class="btn-primary" id="sync-now-btn">↻ Sync Now</button>
+            <button class="btn-secondary" id="hard-reset-btn" style="color:var(--priority-high)">✕ Hard Reset</button>
+          </div>
+        </section>
       </section>
 
     </main>
