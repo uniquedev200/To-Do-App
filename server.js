@@ -24,32 +24,50 @@ app.use(express.static(path.join(__dirname)));
 /* ===== IST Utilities ===== */
 
 /**
- * Returns the current time as an IST ISO-8601 string.
- * Uses Intl.DateTimeFormat — no manual offset math, no DST bugs.
- * Works correctly regardless of the server's system timezone (e.g. UTC on Render).
+ * India Standard Time is UTC+5:30, permanently. No DST ever.
+ * IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000 = 19800000 ms
+ *
+ * Strategy: shift UTC epoch by exactly 19800000ms, then read
+ * getUTC* methods — which now return IST wall-clock values.
+ * This is deterministic and identical on every Node version / OS.
+ */
+const IST_OFFSET_MS = 19800000; // 5h 30m in milliseconds
+
+function toIST(date) {
+  // Returns a Date whose getUTC* methods read as IST wall-clock time
+  return new Date(date.getTime() + IST_OFFSET_MS);
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+/**
+ * Returns the current IST time as a proper ISO-8601 string with +05:30 offset.
+ * e.g. "2026-06-11T17:45:00+05:30"
  */
 function istISO() {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  }).formatToParts(now);
-
-  const get = (type) => parts.find((p) => p.type === type).value;
-  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}+05:30`;
+  const ist = toIST(new Date());
+  return (
+    ist.getUTCFullYear() + '-' +
+    pad2(ist.getUTCMonth() + 1) + '-' +
+    pad2(ist.getUTCDate()) + 'T' +
+    pad2(ist.getUTCHours()) + ':' +
+    pad2(ist.getUTCMinutes()) + ':' +
+    pad2(ist.getUTCSeconds()) + '+05:30'
+  );
 }
 
 /**
  * Returns today's date in IST as YYYY-MM-DD.
- * Critical for overdue comparisons — avoids UTC date being 1 day behind IST.
+ * Critical for overdue comparisons — avoids UTC midnight shifting the date.
+ * e.g. at 11:45 PM IST (= 6:15 PM UTC), this correctly returns IST's date.
  */
 function istDateString() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date()); // en-CA locale produces YYYY-MM-DD naturally
+  const ist = toIST(new Date());
+  return (
+    ist.getUTCFullYear() + '-' +
+    pad2(ist.getUTCMonth() + 1) + '-' +
+    pad2(ist.getUTCDate())
+  );
 }
 
 /* ===== PostgreSQL Connection ===== */
