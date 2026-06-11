@@ -305,8 +305,17 @@ app.post('/api/sync', function (req, res) {
 });
 
 /* ===== Serve SPA fallback ===== */
-app.get('*', function (req, res) {
+app.get(/^\/[^.]*$/, function (req, res) {
   res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 404 for any unmatched static file requests
+app.use(function (req, res) {
+  if (req.path.startsWith('/api/')) {
+    res.status(404).json({ error: 'Not found' });
+  } else {
+    res.status(404).sendFile(path.join(__dirname, 'offline.html'));
+  }
 });
 
 /* ===== Start Server ===== */
