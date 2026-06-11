@@ -71,10 +71,18 @@ function istDateString() {
 }
 
 /* ===== PostgreSQL Connection ===== */
+const dns = require('dns');
+const origLookup = dns.lookup;
+dns.lookup = function (host, opts, cb) {
+  if (typeof opts === 'function') { cb = opts; opts = { family: 4, hints: dns.ADDRCONFIG }; }
+  else if (typeof opts === 'number') { opts = { family: 4, hints: dns.ADDRCONFIG }; }
+  else { opts = opts || {}; opts.family = 4; opts.hints = dns.ADDRCONFIG; }
+  origLookup(host, opts, cb);
+};
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  family: 4,
 });
 
 pool.connect(function (err) {
