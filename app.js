@@ -104,6 +104,9 @@ function deleteTask(id) {
   const removed = tasks.splice(idx, 1)[0];
   saveTasks(tasks);
   syncToBackend();
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    fetch(CONFIG.JARVIS_API_URL + '/tasks/' + id, { method: 'DELETE' }).catch(function () {});
+  }
   return removed;
 }
 
@@ -130,6 +133,9 @@ function deleteMemory(id) {
   const removed = memories.splice(idx, 1)[0];
   saveMemories(memories);
   syncToBackend();
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    fetch(CONFIG.JARVIS_API_URL + '/memories/' + id, { method: 'DELETE' }).catch(function () {});
+  }
   return removed;
 }
 
@@ -606,6 +612,7 @@ function flushSync() {
     syncQueue = [];
   }).catch(function (err) {
     console.warn('Sync to backend failed, will retry:', err.message);
+    if (syncQueue.length === 0) syncQueue.push(Date.now());
   }).finally(function () {
     syncInProgress = false;
     if (syncQueue.length > 0) setTimeout(flushSync, 2000);
@@ -614,7 +621,58 @@ function flushSync() {
 
 window.addEventListener('online', function () {
   if (syncQueue.length > 0) flushSync();
+  pullFromBackend();
 });
+
+/* ===== PULL FROM BACKEND (cross-device) ===== */
+function pullFromBackend() {
+  if (!navigator.onLine) return;
+  const apiUrl = CONFIG.JARVIS_API_URL;
+  if (!apiUrl) return;
+
+  fetch(apiUrl + '/tasks').then(function (r) {
+    if (!r.ok) throw new Error('Pull tasks failed');
+    return r.json();
+  }).then(function (remote) {
+    if (!remote || remote.length === 0) return;
+    var tasks = remote.map(function (t) {
+      return {
+        id: t.id,
+        title: t.title,
+        category: t.category || 'Other',
+        priority: t.priority || 'medium',
+        due: t.due || null,
+        notes: t.notes || '',
+        done: t.done || false,
+        completedAt: t.completed_at || t.completedAt || null,
+        created: t.created || new Date().toISOString(),
+      };
+    });
+    saveTasks(tasks);
+  }).catch(function (err) {
+    console.warn('Pull tasks from backend failed:', err.message);
+  });
+
+  fetch(apiUrl + '/memories').then(function (r) {
+    if (!r.ok) throw new Error('Pull memories failed');
+    return r.json();
+  }).then(function (remote) {
+    if (!remote || remote.length === 0) return;
+    var memories = remote.map(function (m) {
+      return {
+        id: m.id,
+        title: m.title,
+        type: m.type || 'note',
+        content: m.content || '',
+        tags: m.tags || [],
+        created: m.created || new Date().toISOString(),
+      };
+    });
+    saveMemories(memories);
+  }).catch(function (err) {
+    console.warn('Pull memories from backend failed:', err.message);
+  });
+}
 
 /* ===== EVENT SETUP ===== */
 function setupEvents() {
@@ -885,6 +943,12 @@ let lastRolloverCheck = '';
 function init() {
   updateClock();
   setInterval(updateClock, 1000);
+
+  // Push local data to DB, then pull any cross-device changes
+  syncToBackend();
+  setTimeout(pullFromBackend, 500);
+  setInterval(pullFromBackend, 30000);
+
   rolloverOverdueTasks();
   setupEvents();
   navigateTo('dashboard');
