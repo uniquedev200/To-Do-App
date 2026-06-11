@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#050810">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JARVIS">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23050810'/%3E%3Ccircle cx='16' cy='14' r='9' fill='none' stroke='%2300D4FF' stroke-width='2'/%3E%3Ccircle cx='16' cy='14' r='5' fill='none' stroke='%2300D4FF' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='14' r='2' fill='%2300D4FF'/%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%23050810'/%3E%3Ccircle cx='96' cy='80' r='50' fill='none' stroke='%2300D4FF' stroke-width='10'/%3E%3Ccircle cx='96' cy='80' r='30' fill='none' stroke='%2300D4FF' stroke-width='8'/%3E%3Ccircle cx='96' cy='80' r='12' fill='%2300D4FF'/%3E%3Ctext x='96' y='160' text-anchor='middle' font-family='sans-serif' font-size='28' fill='%2300D4FF' font-weight='bold'%3EJ%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Orbitron:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <title>JARVIS — Personal AI Command Center</title>
+</head>
+<body>
+  <div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo" aria-hidden="true"><span>J</span></div>
+        <div>
+          <div class="logo-text">JARVIS</div>
+          <div class="tagline">Personal AI Command Center</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-page="dashboard" aria-label="Dashboard">
+          <span class="nav-icon" aria-hidden="true">🏠</span> Dashboard
+        </button>
+        <button class="nav-item" data-page="tasks" aria-label="Tasks">
+          <span class="nav-icon" aria-hidden="true">✓</span> Tasks
+        </button>
+        <button class="nav-item" data-page="memory" aria-label="Memory Bank">
+          <span class="nav-icon" aria-hidden="true">🧠</span> Memory Bank
+        </button>
+        <button class="nav-item" data-page="overview" aria-label="Overview">
+          <span class="nav-icon" aria-hidden="true">📊</span> Overview
+        </button>
+        <button class="nav-item" data-page="api" aria-label="Jarvis API">
+          <span class="nav-icon" aria-hidden="true">🤖</span> Jarvis API
+        </button>
+      </nav>
+      <div class="sidebar-footer">JARVIS v1.0 &middot; AI Core Active</div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content" role="main">
+
+      <!-- Mobile Header -->
+      <div class="page-header mobile-only" id="mobile-header">
+        <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">☰</button>
+        <div class="logo-text" style="font-size:1rem">JARVIS</div>
+        <div style="width:44px"></div>
+      </div>
+
+      <!-- ==================== DASHBOARD ==================== -->
+      <section class="page active" id="page-dashboard" aria-label="Dashboard">
+        <div class="dashboard-greeting" id="greeting">Good morning, Commander.</div>
+        <div class="dashboard-clock" id="clock">00:00:00</div>
+        <div class="dashboard-date" id="date">Loading...</div>
+
+        <div class="stats-grid" id="dash-stats">
+          <div class="stat-card glass glass-static">
+            <div class="stat-value" id="dash-total">0</div>
+            <div class="stat-label">Total Tasks</div>
+          </div>
+          <div class="stat-card glass glass-static">
+            <div class="stat-value" id="dash-active">0</div>
+            <div class="stat-label">Active</div>
+          </div>
+          <div class="stat-card glass glass-static">
+            <div class="stat-value" id="dash-done">0</div>
+            <div class="stat-label">Completed</div>
+          </div>
+          <div class="stat-card glass glass-static">
+            <div class="stat-value" id="dash-memories">0</div>
+            <div class="stat-label">Memory Entries</div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="dashboard-section glass" aria-label="Due today">
+            <h3>⚠ Due Today</h3>
+            <div id="dash-due-today"><div class="empty-state"><div class="empty-icon" aria-hidden="true">✓</div><p>All clear. No deadlines today.</p></div></div>
+          </section>
+          <section class="dashboard-section glass" aria-label="Recent memories">
+            <h3>🧠 Recent Memories</h3>
+            <div id="dash-recent-memories"><div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Memory bank is empty. Start building your knowledge base.</p></div></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ==================== TASKS ==================== -->
+      <section class="page" id="page-tasks" aria-label="Tasks">
+        <div class="page-header">
+          <h1>TASKS</h1>
+          <button class="btn-primary" id="add-task-btn" aria-label="Add new task">+ New Task</button>
+        </div>
+
+        <div class="task-controls">
+          <input class="input-field task-search" id="task-search" type="search" placeholder="Search tasks..." aria-label="Search tasks">
+          <select class="input-field" id="task-sort" style="width:auto;min-width:140px" aria-label="Sort tasks">
+            <option value="created">Sort by: Created</option>
+            <option value="due">Sort by: Due Date</option>
+            <option value="priority">Sort by: Priority</option>
+            <option value="title">Sort by: Title</option>
+          </select>
+        </div>
+
+        <div class="chip-filters" id="task-filters" role="tablist" aria-label="Task filters">
+          <button class="chip active" data-filter="all" role="tab" aria-selected="true">All</button>
+          <button class="chip" data-filter="active" role="tab" aria-selected="false">Active</button>
+          <button class="chip" data-filter="done" role="tab" aria-selected="false">Done</button>
+          <button class="chip" data-filter="overdue" role="tab" aria-selected="false">⚠ Overdue</button>
+          <button class="chip" data-filter="high" role="tab" aria-selected="false">High Priority</button>
+          <button class="chip" data-filter="Work" role="tab" aria-selected="false">Work</button>
+          <button class="chip" data-filter="Personal" role="tab" aria-selected="false">Personal</button>
+          <button class="chip" data-filter="Learning" role="tab" aria-selected="false">Learning</button>
+        </div>
+
+        <div class="task-list" id="task-list" role="list" aria-label="Task list">
+          <div class="empty-state"><div class="empty-icon" aria-hidden="true">📋</div><p>No tasks queued, Commander.</p></div>
+        </div>
+      </section>
+
+      <!-- ==================== MEMORY BANK ==================== -->
+      <section class="page" id="page-memory" aria-label="Memory Bank">
+        <div class="page-header">
+          <h1>MEMORY BANK</h1>
+          <button class="btn-primary" id="add-memory-btn" aria-label="Add new memory">+ Store Memory</button>
+        </div>
+
+        <div class="memory-controls">
+          <input class="input-field memory-search" id="memory-search" type="search" placeholder="Search memories..." aria-label="Search memories">
+        </div>
+
+        <div class="chip-filters" id="memory-filters" role="tablist" aria-label="Memory type filters">
+          <button class="chip active" data-filter="all" role="tab" aria-selected="true">All</button>
+          <button class="chip" data-filter="fact" role="tab" aria-selected="false">Fact</button>
+          <button class="chip" data-filter="goal" role="tab" aria-selected="false">Goal</button>
+          <button class="chip" data-filter="note" role="tab" aria-selected="false">Note</button>
+          <button class="chip" data-filter="context" role="tab" aria-selected="false">Context</button>
+        </div>
+
+        <div class="memory-list" id="memory-list">
+          <div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Memory bank is empty. Start building your knowledge base.</p></div>
+        </div>
+      </section>
+
+      <!-- ==================== OVERVIEW ==================== -->
+      <section class="page" id="page-overview" aria-label="Overview">
+        <div class="page-header"><h1>OVERVIEW</h1></div>
+
+        <div class="overview-stats" id="overview-stats">
+          <div class="overview-stat glass glass-static">
+            <div class="overview-stat-value" id="ov-total">0</div>
+            <div class="overview-stat-label">Total</div>
+          </div>
+          <div class="overview-stat glass glass-static">
+            <div class="overview-stat-value" id="ov-active">0</div>
+            <div class="overview-stat-label">Active</div>
+          </div>
+          <div class="overview-stat glass glass-static">
+            <div class="overview-stat-value" id="ov-done">0</div>
+            <div class="overview-stat-label">Completed</div>
+          </div>
+          <div class="overview-stat glass glass-static">
+            <div class="overview-stat-value" id="ov-high">0</div>
+            <div class="overview-stat-label">High Priority</div>
+          </div>
+          <div class="overview-stat glass glass-static">
+            <div class="overview-stat-value" id="ov-memories">0</div>
+            <div class="overview-stat-label">Memory Entries</div>
+          </div>
+        </div>
+
+        <div class="overview-grid">
+          <section class="overview-section glass" aria-label="Completion rate">
+            <h3>Completion Rate</h3>
+            <div class="progress-ring-container">
+              <svg class="progress-ring" width="140" height="140" viewBox="0 0 140 140">
+                <circle class="progress-ring-bg" cx="70" cy="70" r="56" stroke-width="8"/>
+                <circle class="progress-ring-fill" id="progress-fill" cx="70" cy="70" r="56" stroke-width="8" stroke-dasharray="0 351.86"/>
+                <text class="progress-ring-text" x="70" y="76" text-anchor="middle" id="progress-text">0%</text>
+              </svg>
+              <div class="progress-label">Tasks Complete</div>
+            </div>
+          </section>
+          <section class="overview-section glass" aria-label="Category breakdown">
+            <h3>By Category</h3>
+            <div class="bar-chart" id="category-chart">
+              <div class="empty-state"><p>No data yet.</p></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="overview-section glass" aria-label="Upcoming tasks">
+          <h3>📅 Upcoming (Next 7 Days)</h3>
+          <div id="upcoming-list">
+            <div class="empty-state"><div class="empty-icon" aria-hidden="true">✓</div><p>All clear. No deadlines this week.</p></div>
+          </div>
+        </section>
+      </section>
+
+      <!-- ==================== JARVIS API ==================== -->
+      <section class="page" id="page-api" aria-label="Jarvis API Export">
+        <div class="page-header"><h1>JARVIS API</h1></div>
+
+        <div class="api-grid">
+          <div class="api-panel glass">
+            <h3>Memory Context</h3>
+            <div class="api-timestamp" id="mem-ts">Last updated: —</div>
+            <div class="code-block"><pre id="mem-export">{ }</pre></div>
+            <div class="api-panel-actions">
+              <button class="btn-primary copy-btn" data-target="mem-export" aria-label="Copy memory context">📋 Copy</button>
+              <button class="btn-secondary" id="refresh-mem-export">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="api-panel glass">
+            <h3>Active Tasks</h3>
+            <div class="api-timestamp" id="task-ts">Last updated: —</div>
+            <div class="code-block"><pre id="task-export">{ }</pre></div>
+            <div class="api-panel-actions">
+              <button class="btn-primary copy-btn" data-target="task-export" aria-label="Copy active tasks">📋 Copy</button>
+              <button class="btn-secondary" id="refresh-task-export">↻ Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="api-sync-row" style="margin-bottom:1rem">
+          <button class="btn-primary" id="send-to-jarvis" aria-label="Send data to Jarvis API">🚀 Send to Jarvis</button>
+          <span style="font-size:0.78rem;color:var(--text-muted)">Data is ready for AI consumption</span>
+        </div>
+
+        <div class="api-notice">// Future: This will auto-sync to your Jarvis AI database on every change</div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Bottom Nav (Mobile) -->
+  <nav class="bottom-nav" id="bottom-nav" role="navigation" aria-label="Mobile navigation">
+    <button class="bottom-nav-item active" data-page="dashboard" aria-label="Dashboard">
+      <span class="nav-icon" aria-hidden="true">🏠</span>
+      <span class="nav-label">Home</span>
+    </button>
+    <button class="bottom-nav-item" data-page="tasks" aria-label="Tasks">
+      <span class="nav-icon" aria-hidden="true">✓</span>
+      <span class="nav-label">Tasks</span>
+    </button>
+    <button class="bottom-nav-item" data-page="memory" aria-label="Memory">
+      <span class="nav-icon" aria-hidden="true">🧠</span>
+      <span class="nav-label">Memory</span>
+    </button>
+    <button class="bottom-nav-item" data-page="overview" aria-label="Overview">
+      <span class="nav-icon" aria-hidden="true">📊</span>
+      <span class="nav-label">Overview</span>
+    </button>
+    <button class="bottom-nav-item" data-page="api" aria-label="API">
+      <span class="nav-icon" aria-hidden="true">🤖</span>
+      <span class="nav-label">API</span>
+    </button>
+  </nav>
+
+  <!-- FAB -->
+  <button class="fab" id="fab" aria-label="Quick add">+</button>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ===== ADD TASK MODAL ===== -->
+  <div class="modal-overlay" id="task-modal" role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="task-modal-title">Queue Task</h2>
+        <button class="modal-close" id="task-modal-close" aria-label="Dismiss">✕</button>
+      </div>
+      <form id="task-form" novalidate>
+        <div class="form-group">
+          <label for="task-title-input">Task Title</label>
+          <input class="input-field" id="task-title-input" type="text" placeholder="What needs to be done?" required aria-required="true">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-category-input">Category</label>
+            <select class="input-field" id="task-category-input">
+              <option value="Work">Work</option>
+              <option value="Personal">Personal</option>
+              <option value="Learning">Learning</option>
+              <option value="Health">Health</option>
+              <option value="Jarvis">Jarvis</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Priority</label>
+            <div class="segmented-control" id="task-priority-input" role="radiogroup" aria-label="Task priority">
+              <span class="segmented-option" data-value="high" role="radio" aria-checked="false" tabindex="0" aria-label="High priority">High</span>
+              <span class="segmented-option active" data-value="medium" role="radio" aria-checked="true" tabindex="0" aria-label="Medium priority">Medium</span>
+              <span class="segmented-option" data-value="low" role="radio" aria-checked="false" tabindex="0" aria-label="Low priority">Low</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-due-input">Due Date</label>
+            <input class="input-field" id="task-due-input" type="date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="task-notes-input">Notes</label>
+          <textarea class="input-field" id="task-notes-input" placeholder="Add notes..." rows="3"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary modal-cancel" id="task-cancel">Dismiss</button>
+          <button type="submit" class="btn-primary" id="task-submit">Queue Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== ADD MEMORY MODAL ===== -->
+  <div class="modal-overlay" id="memory-modal" role="dialog" aria-modal="true" aria-labelledby="memory-modal-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="memory-modal-title">Store Memory</h2>
+        <button class="modal-close" id="memory-modal-close" aria-label="Dismiss">✕</button>
+      </div>
+      <form id="memory-form" novalidate>
+        <div class="form-group">
+          <label for="memory-title-input">Title</label>
+          <input class="input-field" id="memory-title-input" type="text" placeholder="Memory title..." required aria-required="true">
+        </div>
+        <div class="form-group">
+          <label for="memory-type-input">Type</label>
+          <select class="input-field" id="memory-type-input">
+            <option value="fact">Fact</option>
+            <option value="goal">Goal</option>
+            <option value="note">Note</option>
+            <option value="context">Context</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="memory-content-input">Content</label>
+          <textarea class="input-field" id="memory-content-input" placeholder="What does Jarvis need to know?" rows="4" required aria-required="true"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="memory-tags-input">Tags (comma-separated)</label>
+          <input class="input-field" id="memory-tags-input" type="text" placeholder="ai, goals, project">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary modal-cancel" id="memory-cancel">Dismiss</button>
+          <button type="submit" class="btn-primary" id="memory-submit">Store Memory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function(err) {
+        console.warn('SW registration failed:', err);
+      });
+    }
+  </script>
+</body>
+</html>

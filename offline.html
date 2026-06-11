@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS — Offline</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #050810;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .offline-card {
+      text-align: center;
+      max-width: 400px;
+    }
+    .pulse-ring {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 3px solid rgba(0,212,255,0.3);
+      margin: 0 auto 2rem;
+      position: relative;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .pulse-ring::after {
+      content: '';
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      background: rgba(0,212,255,0.15);
+      border: 2px solid rgba(0,212,255,0.2);
+    }
+    .pulse-ring::before {
+      content: '';
+      position: absolute;
+      inset: 28px;
+      border-radius: 50%;
+      background: #00D4FF;
+      box-shadow: 0 0 20px rgba(0,212,255,0.5);
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 1; }
+    }
+    h1 { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; margin-bottom: 1rem; color: #00D4FF; }
+    p { color: rgba(255,255,255,0.6); line-height: 1.6; }
+    .retry-btn {
+      margin-top: 2rem;
+      padding: 0.75rem 2rem;
+      background: linear-gradient(135deg, #00D4FF, #0099CC);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .retry-btn:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }
+  </style>
+</head>
+<body>
+  <div class="offline-card">
+    <div class="pulse-ring"></div>
+    <h1>Connection Lost</h1>
+    <p>JARVIS is running in offline mode. Some features may be unavailable until your connection is restored.</p>
+    <button class="retry-btn" onclick="window.location.reload()">Retry Connection</button>
+  </div>
+</body>
+</html>

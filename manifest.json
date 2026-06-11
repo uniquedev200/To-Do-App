@@ -1,0 +1,24 @@
+{
+  "name": "JARVIS",
+  "short_name": "JARVIS",
+  "description": "Personal AI Command Center",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#050810",
+  "background_color": "#050810",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='64' fill='%23050810'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%2300D4FF' stroke-width='20'/%3E%3Ccircle cx='256' cy='256' r='100' fill='none' stroke='%2300D4FF' stroke-width='16'/%3E%3Ccircle cx='256' cy='256' r='40' fill='%2300D4FF'/%3E%3Ctext x='256' y='440' text-anchor='middle' font-family='sans-serif' font-size='48' fill='%2300D4FF' font-weight='bold'%3EJARVIS%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%23050810'/%3E%3Ccircle cx='96' cy='80' r='50' fill='none' stroke='%2300D4FF' stroke-width='10'/%3E%3Ccircle cx='96' cy='80' r='30' fill='none' stroke='%2300D4FF' stroke-width='8'/%3E%3Ccircle cx='96' cy='80' r='12' fill='%2300D4FF'/%3E%3Ctext x='96' y='160' text-anchor='middle' font-family='sans-serif' font-size='28' fill='%2300D4FF' font-weight='bold'%3EJ%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
