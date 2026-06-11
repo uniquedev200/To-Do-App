@@ -5,63 +5,50 @@ const CONFIG = {
   SYNC_INTERVAL_MS: 30000,
 };
 
-/* ===== WORLD TIME — not OS time ===== */
-let timeOffset = 0;
-let timeSynced = false;
-let timeSyncAttempted = false;
+/* ===== IST TIME UTILITIES ===== */
+// India Standard Time = UTC+5:30, permanently. No DST ever.
+// We always derive IST from the system UTC clock using Intl.
+// We do NOT use worldtimeapi for timezone conversion — it only
+// returns a tiny clock-drift delta, not a timezone offset.
+// Reading getUTCHours() on an unadjusted Date gives UTC, not IST.
 
-function getWorldNow() {
-  return new Date(Date.now() + timeOffset);
+function _istParts(includeTime) {
+  const opts = {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  };
+  if (includeTime) {
+    opts.hour = '2-digit';
+    opts.minute = '2-digit';
+    opts.second = '2-digit';
+    opts.hour12 = false;
+  }
+  const p = {};
+  new Intl.DateTimeFormat('en-GB', opts)
+    .formatToParts(new Date())
+    .forEach(function (part) { p[part.type] = part.value; });
+  // en-GB hour12:false can return "24" at midnight — normalise
+  if (p.hour === '24') p.hour = '00';
+  return p;
 }
 
+/** Current IST hour (0–23) */
+function istHour() { return parseInt(_istParts(true).hour, 10); }
+
+/** Today's date in IST as YYYY-MM-DD */
 function getWorldToday() {
-  const d = getWorldNow();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return y + '-' + m + '-' + day;
+  const p = _istParts(false);
+  return p.year + '-' + p.month + '-' + p.day;
 }
 
+/** Current IST datetime as ISO-8601 with +05:30 */
 function getWorldISO() {
-  const d = getWorldNow();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const h = String(d.getUTCHours()).padStart(2, '0');
-  const min = String(d.getUTCMinutes()).padStart(2, '0');
-  const s = String(d.getUTCSeconds()).padStart(2, '0');
-  const ms = String(d.getMilliseconds()).padStart(3, '0');
-  return y + '-' + m + '-' + day + 'T' + h + ':' + min + ':' + s + '.' + ms + '+05:30';
+  const p = _istParts(true);
+  return p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute + ':' + p.second + '+05:30';
 }
 
-async function syncWorldTime() {
-  if (timeSyncAttempted) return;
-  timeSyncAttempted = true;
-  try {
-    const r = await fetch('https://worldtimeapi.org/api/timezone/Asia/Kolkata');
-    const data = await r.json();
-    const worldMs = new Date(data.datetime).getTime();
-    timeOffset = worldMs - Date.now();
-    localStorage.setItem('jarvis_time_offset', String(timeOffset));
-    timeSynced = true;
-  } catch {
-    const stored = localStorage.getItem('jarvis_time_offset');
-    if (stored) {
-      timeOffset = Number(stored);
-      timeSynced = true;
-    }
-  }
-}
-
-function worldNowFallback() {
-  if (!timeSynced && !timeSyncAttempted) {
-    syncWorldTime();
-    const stored = localStorage.getItem('jarvis_time_offset');
-    if (stored) timeOffset = Number(stored);
-    timeSynced = true;
-  }
-  return getWorldNow();
-}
+/** Current IST time as a plain Date (for .getTime() / arithmetic only — do not read local* methods) */
+function getWorldNow() { return new Date(); }
 
 /* ===== DATA LAYER ===== */
 function getTasks() {
@@ -82,7 +69,7 @@ function saveMemories(memories) {
 function addTask(data) {
   const tasks = getTasks();
   const task = {
-    id: getWorldNow().getTime(),
+    id: Date.now(),
     title: data.title.trim(),
     category: data.category || 'Other',
     priority: data.priority || 'medium',
@@ -123,7 +110,7 @@ function deleteTask(id) {
 function addMemory(data) {
   const memories = getMemories();
   const memory = {
-    id: getWorldNow().getTime(),
+    id: Date.now(),
     title: data.title.trim(),
     type: data.type || 'note',
     content: data.content.trim(),
@@ -181,19 +168,14 @@ let currentPage = 'dashboard';
 
 function navigateTo(page) {
   currentPage = page;
-
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
-
   const pageEl = document.getElementById('page-' + page);
   if (pageEl) pageEl.classList.add('active');
-
   document.querySelectorAll(`.nav-item[data-page="${page}"], .bottom-nav-item[data-page="${page}"]`)
     .forEach(n => n.classList.add('active'));
-
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('hamburger').setAttribute('aria-expanded', 'false');
-
   renderPage(page);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -208,31 +190,32 @@ function renderPage(page) {
   }
 }
 
-/* ===== GREETING & CLOCK ===== */
+/* ===== CLOCK ===== */
 function updateClock() {
-  const now = getWorldNow();
-  const hours = String(now.getUTCHours()).padStart(2, '0');
-  const mins = String(now.getUTCMinutes()).padStart(2, '0');
-  const secs = String(now.getUTCSeconds()).padStart(2, '0');
+  // Use Intl directly — never read getUTCHours() on a plain Date for IST display
+  const p = _istParts(true);
+
   const clock = document.getElementById('clock');
-  if (clock) clock.textContent = hours + ':' + mins + ':' + secs;
+  if (clock) clock.textContent = p.hour + ':' + p.minute + ':' + p.second;
 
   const dateEl = document.getElementById('date');
   if (dateEl) {
-    const opts = { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'Asia/Kolkata' };
-    dateEl.textContent = now.toLocaleDateString('en-US', opts);
+    dateEl.textContent = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
   }
 
   const greeting = document.getElementById('greeting');
   if (greeting) {
+    const h = parseInt(p.hour, 10);
     let period = 'morning';
-    const h = now.getUTCHours();
     if (h >= 12 && h < 17) period = 'afternoon';
     else if (h >= 17) period = 'evening';
     greeting.textContent = 'Good ' + period + ', Commander.';
   }
 
-  const minuteKey = now.getUTCFullYear() + '-' + now.getUTCMonth() + '-' + now.getUTCDate() + '-' + now.getUTCHours() + '-' + now.getUTCMinutes();
+  const minuteKey = p.year + p.month + p.day + p.hour + p.minute;
   if (minuteKey !== lastRolloverCheck) {
     lastRolloverCheck = minuteKey;
     rolloverOverdueTasks();
@@ -252,7 +235,6 @@ function renderDashboard() {
   document.getElementById('dash-done').textContent = done.length;
   document.getElementById('dash-memories').textContent = memories.length;
 
-  // Due today
   const today = getWorldToday();
   const dueToday = tasks.filter(t => t.due === today && !t.done);
   const dueContainer = document.getElementById('dash-due-today');
@@ -282,7 +264,6 @@ function renderDashboard() {
   }
   dueContainer.innerHTML = dueHtml;
 
-  // Recent memories
   const recent = memories.slice(0, 3);
   const memContainer = document.getElementById('dash-recent-memories');
   if (recent.length === 0) {
@@ -307,20 +288,17 @@ function renderTasks() {
   const list = document.getElementById('task-list');
   const today = getWorldToday();
 
-  // Filter
   if (taskFilter === 'active') tasks = tasks.filter(t => !t.done);
   else if (taskFilter === 'done') tasks = tasks.filter(t => t.done);
   else if (taskFilter === 'high') tasks = tasks.filter(t => t.priority === 'high' && !t.done);
   else if (taskFilter === 'overdue') tasks = tasks.filter(t => isOverdue(t));
   else if (['Work', 'Personal', 'Learning'].includes(taskFilter)) tasks = tasks.filter(t => t.category === taskFilter);
 
-  // Search
   if (taskSearch) {
     const q = taskSearch.toLowerCase();
     tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q));
   }
 
-  // Sort
   if (taskSort === 'due') tasks.sort((a, b) => (a.due || '9999-99-99').localeCompare(b.due || '9999-99-99'));
   else if (taskSort === 'priority') {
     const order = { high: 0, medium: 1, low: 2 };
@@ -385,9 +363,7 @@ function renderMemory() {
   list.innerHTML = memories.map((m, i) => `
     <div class="memory-card glass card-enter" style="animation-delay:${i * 50}ms" data-id="${m.id}">
       <div class="memory-card-header">
-        <div>
-          <span class="badge badge-${m.type}">${m.type}</span>
-        </div>
+        <div><span class="badge badge-${m.type}">${m.type}</span></div>
         <button class="memory-delete" data-id="${m.id}" aria-label="Delete ${escHtml(m.title)}">Delete</button>
       </div>
       <div class="memory-card-title">${escHtml(m.title)}</div>
@@ -415,31 +391,25 @@ function renderOverview() {
   document.getElementById('ov-high').textContent = high.length;
   document.getElementById('ov-memories').textContent = memories.length;
 
-  // Progress ring
   const total = tasks.length;
-  const doneCount = done.length;
-  const pct = total === 0 ? 0 : Math.round((doneCount / total) * 100);
+  const pct = total === 0 ? 0 : Math.round((done.length / total) * 100);
   const circumference = 2 * Math.PI * 56;
   const offset = circumference - (pct / 100) * circumference;
   const fill = document.getElementById('progress-fill');
-  if (fill) {
-    fill.style.strokeDasharray = `${offset} ${circumference}`;
-  }
+  if (fill) fill.style.strokeDasharray = `${offset} ${circumference}`;
   const text = document.getElementById('progress-text');
   if (text) text.textContent = pct + '%';
 
-  // Category bar chart
   const cats = ['Work', 'Personal', 'Learning', 'Health', 'Jarvis', 'Other'];
   const catCounts = {};
   cats.forEach(c => catCounts[c] = active.filter(t => t.category === c).length);
   const maxCount = Math.max(1, ...Object.values(catCounts));
-
-  const chartContainer = document.getElementById('category-chart');
   const catColors = {
     Work: '#00D4FF', Personal: '#7B61FF', Learning: '#4DFF91',
     Health: '#FF4D6A', Jarvis: '#FFB347', Other: 'rgba(255,255,255,0.3)'
   };
 
+  const chartContainer = document.getElementById('category-chart');
   if (active.length === 0) {
     chartContainer.innerHTML = '<div class="empty-state"><p>No active tasks yet.</p></div>';
   } else {
@@ -454,7 +424,6 @@ function renderOverview() {
     `).join('');
   }
 
-  // Overdue count display
   const upcomingSection = document.querySelector('#page-overview .overview-section[aria-label="Upcoming tasks"]');
   if (upcomingSection && overdue.length > 0) {
     let overdueBanner = upcomingSection.querySelector('.overdue-banner');
@@ -472,15 +441,13 @@ function renderOverview() {
   }
 
   // Upcoming 7 days
-  const now = getWorldNow();
-  const todayMs = now.getTime() - (now.getUTCHours() * 3600000 + now.getUTCMinutes() * 60000 + now.getUTCSeconds() * 1000);
+  const today = getWorldToday();
+  const todayDate = new Date(today + 'T00:00:00+05:30');
   const sevenDays = Array.from({ length: 7 }, function (_, i) {
-    const d = new Date(todayMs + i * 86400000);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return y + '-' + m + '-' + day;
+    const d = new Date(todayDate.getTime() + i * 86400000);
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
   });
+
   const upcoming = tasks.filter(t => t.due && !t.done && sevenDays.includes(t.due))
     .sort((a, b) => a.due.localeCompare(b.due));
 
@@ -515,22 +482,16 @@ function renderApiExports() {
 
   const memExport = {
     generated: now,
-    memories: memories.map(m => ({
-      type: m.type,
-      title: m.title,
-      content: m.content,
-      tags: m.tags,
-    })),
+    memories: memories.map(m => ({ type: m.type, title: m.title, content: m.content, tags: m.tags })),
     goals: memories.filter(m => m.type === 'goal').map(m => m.title),
     task_context: {
       active_count: active.length,
       overdue_count: overdue.length,
       overdue_tasks: overdue.map(t => ({
-        title: t.title,
-        priority: t.priority,
-        category: t.category,
-        due: t.due,
-        days_overdue: Math.max(0, Math.floor((new Date(today + 'T00:00:00+05:30') - new Date(t.due + 'T00:00:00+05:30')) / 86400000)),
+        title: t.title, priority: t.priority, category: t.category, due: t.due,
+        days_overdue: Math.max(0, Math.floor(
+          (new Date(today + 'T00:00:00+05:30') - new Date(t.due + 'T00:00:00+05:30')) / 86400000
+        )),
       })),
     },
   };
@@ -539,22 +500,13 @@ function renderApiExports() {
     .filter(t => t.completedAt)
     .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
     .slice(0, 50)
-    .map(t => ({
-      title: t.title,
-      priority: t.priority,
-      category: t.category,
-      completed_at: t.completedAt,
-    }));
+    .map(t => ({ title: t.title, priority: t.priority, category: t.category, completed_at: t.completedAt }));
 
   const taskExport = {
     generated: now,
     active_tasks: active.map(t => ({
-      title: t.title,
-      priority: t.priority,
-      category: t.category,
-      due: t.due || null,
-      notes: t.notes || null,
-      overdue: isOverdue(t),
+      title: t.title, priority: t.priority, category: t.category,
+      due: t.due || null, notes: t.notes || null, overdue: isOverdue(t),
     })),
     completion_history: completedHistory,
     trends: {
@@ -608,7 +560,7 @@ function escHtml(str) {
 }
 
 function timeAgo(iso) {
-  const diff = getWorldNow().getTime() - new Date(iso).getTime();
+  const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return mins + 'm ago';
@@ -616,7 +568,7 @@ function timeAgo(iso) {
   if (hours < 24) return hours + 'h ago';
   const days = Math.floor(hours / 24);
   if (days < 7) return days + 'd ago';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' });
 }
 
 function isOverdue(task) {
@@ -630,15 +582,8 @@ let syncInProgress = false;
 
 function syncToBackend() {
   if (!CONFIG.AUTO_SYNC) return;
-  if (!navigator.onLine) {
-    queueSync();
-    return;
-  }
+  if (!navigator.onLine) { syncQueue.push(Date.now()); return; }
   flushSync();
-}
-
-function queueSync() {
-  syncQueue.push(getWorldNow().getTime());
 }
 
 function flushSync() {
@@ -648,25 +593,22 @@ function flushSync() {
   const tasks = getTasks();
   const memories = getMemories();
   const apiUrl = CONFIG.JARVIS_API_URL;
-
   if (!apiUrl) { syncInProgress = false; return; }
 
   fetch(apiUrl + '/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tasks: tasks, memories: memories }),
+    body: JSON.stringify({ tasks, memories }),
   }).then(function (r) {
     if (!r.ok) throw new Error('Sync failed: ' + r.status);
     return r.json();
-  }).then(function (data) {
+  }).then(function () {
     syncQueue = [];
   }).catch(function (err) {
     console.warn('Sync to backend failed, will retry:', err.message);
   }).finally(function () {
     syncInProgress = false;
-    if (syncQueue.length > 0) {
-      setTimeout(flushSync, 2000);
-    }
+    if (syncQueue.length > 0) setTimeout(flushSync, 2000);
   });
 }
 
@@ -676,14 +618,10 @@ window.addEventListener('online', function () {
 
 /* ===== EVENT SETUP ===== */
 function setupEvents() {
-  // Navigation
   document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(el => {
-    el.addEventListener('click', function () {
-      navigateTo(this.dataset.page);
-    });
+    el.addEventListener('click', function () { navigateTo(this.dataset.page); });
   });
 
-  // Hamburger
   const hamburger = document.getElementById('hamburger');
   const sidebar = document.getElementById('sidebar');
   hamburger.addEventListener('click', function () {
@@ -691,7 +629,6 @@ function setupEvents() {
     this.setAttribute('aria-expanded', open);
   });
 
-  // Close sidebar on outside click
   document.addEventListener('click', function (e) {
     if (window.innerWidth < 768 && sidebar.classList.contains('open')) {
       if (!sidebar.contains(e.target) && !hamburger.contains(e.target)) {
@@ -701,28 +638,18 @@ function setupEvents() {
     }
   });
 
-  // FAB
   document.getElementById('fab').addEventListener('click', function () {
-    if (currentPage === 'memory') {
-      openMemoryModal();
-    } else {
-      openTaskModal();
-    }
+    if (currentPage === 'memory') openMemoryModal();
+    else openTaskModal();
   });
 
-  // Task: Search
   document.getElementById('task-search').addEventListener('input', function () {
-    taskSearch = this.value;
-    renderTasks();
+    taskSearch = this.value; renderTasks();
   });
-
-  // Task: Sort
   document.getElementById('task-sort').addEventListener('change', function () {
-    taskSort = this.value;
-    renderTasks();
+    taskSort = this.value; renderTasks();
   });
 
-  // Task: Filters (chips)
   document.querySelectorAll('#task-filters .chip').forEach(chip => {
     chip.addEventListener('click', function () {
       document.querySelectorAll('#task-filters .chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-selected', 'false'); });
@@ -733,27 +660,12 @@ function setupEvents() {
     });
   });
 
-  // Task: Overdue filter chip (dynamic — added after init)
-  const overdueChip = document.querySelector('#task-filters .chip[data-filter="overdue"]');
-  if (overdueChip) {
-    overdueChip.addEventListener('click', function () {
-      document.querySelectorAll('#task-filters .chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-selected', 'false'); });
-      this.classList.add('active');
-      this.setAttribute('aria-selected', 'true');
-      taskFilter = 'overdue';
-      renderTasks();
-    });
-  }
-
-  // Task: Add button
   document.getElementById('add-task-btn').addEventListener('click', openTaskModal);
 
-  // Task: Delegated events (toggle, delete)
   document.getElementById('task-list').addEventListener('click', function (e) {
     const target = e.target.closest('[data-id]');
     if (!target) return;
     const id = Number(target.dataset.id);
-
     if (target.classList.contains('task-check')) {
       const task = toggleTaskDone(id);
       if (task) {
@@ -762,14 +674,11 @@ function setupEvents() {
         if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
       }
     }
-
     if (target.classList.contains('task-delete')) {
       const removed = deleteTask(id);
       if (removed) {
         showToast('Task deleted.', 'info', function () {
-          const tasks = getTasks();
-          tasks.unshift(removed);
-          saveTasks(tasks);
+          const tasks = getTasks(); tasks.unshift(removed); saveTasks(tasks);
           renderTasks();
           if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
         });
@@ -779,24 +688,17 @@ function setupEvents() {
     }
   });
 
-  // Task: Keyboard support for checkboxes
   document.getElementById('task-list').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ') {
       const target = e.target.closest('.task-check');
-      if (target) {
-        e.preventDefault();
-        target.click();
-      }
+      if (target) { e.preventDefault(); target.click(); }
     }
   });
 
-  // Memory: Search
   document.getElementById('memory-search').addEventListener('input', function () {
-    memorySearch = this.value;
-    renderMemory();
+    memorySearch = this.value; renderMemory();
   });
 
-  // Memory: Filters
   document.querySelectorAll('#memory-filters .chip').forEach(chip => {
     chip.addEventListener('click', function () {
       document.querySelectorAll('#memory-filters .chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-selected', 'false'); });
@@ -807,10 +709,8 @@ function setupEvents() {
     });
   });
 
-  // Memory: Add button
   document.getElementById('add-memory-btn').addEventListener('click', openMemoryModal);
 
-  // Memory: Delegated delete
   document.getElementById('memory-list').addEventListener('click', function (e) {
     const target = e.target.closest('.memory-delete');
     if (!target) return;
@@ -823,23 +723,18 @@ function setupEvents() {
     }
   });
 
-  // Task Modal
   document.getElementById('task-modal-close').addEventListener('click', closeTaskModal);
   document.getElementById('task-cancel').addEventListener('click', closeTaskModal);
   document.querySelectorAll('.modal-cancel').forEach(b => {
-    b.addEventListener('click', function () {
-      this.closest('.modal-overlay').classList.remove('open');
-    });
+    b.addEventListener('click', function () { this.closest('.modal-overlay').classList.remove('open'); });
   });
 
-  // Segmented control (priority)
   document.querySelectorAll('.segmented-control').forEach(function (group) {
     group.addEventListener('click', function (e) {
       const opt = e.target.closest('.segmented-option');
       if (!opt) return;
       this.querySelectorAll('.segmented-option').forEach(function (o) {
-        o.classList.remove('active');
-        o.setAttribute('aria-checked', 'false');
+        o.classList.remove('active'); o.setAttribute('aria-checked', 'false');
       });
       opt.classList.add('active');
       opt.setAttribute('aria-checked', 'true');
@@ -852,22 +747,19 @@ function setupEvents() {
     });
   });
 
-  // Task form submit
   document.getElementById('task-form').addEventListener('submit', function (e) {
     e.preventDefault();
     const titleInput = document.getElementById('task-title-input');
     const title = titleInput.value.trim();
     if (!title) { titleInput.focus(); return; }
-
     const priorityEl = document.querySelector('#task-priority-input .segmented-option.active');
-    const task = addTask({
-      title: title,
+    addTask({
+      title,
       category: document.getElementById('task-category-input').value,
       priority: priorityEl ? priorityEl.dataset.value : 'medium',
       due: document.getElementById('task-due-input').value || null,
       notes: document.getElementById('task-notes-input').value,
     });
-
     showToast('Task queued ✓', 'success');
     closeTaskModal();
     this.reset();
@@ -876,11 +768,9 @@ function setupEvents() {
     if (currentPage === 'dashboard') renderDashboard();
   });
 
-  // Memory Modal
   document.getElementById('memory-modal-close').addEventListener('click', closeMemoryModal);
   document.getElementById('memory-cancel').addEventListener('click', closeMemoryModal);
 
-  // Memory form submit
   document.getElementById('memory-form').addEventListener('submit', function (e) {
     e.preventDefault();
     const titleInput = document.getElementById('memory-title-input');
@@ -889,14 +779,12 @@ function setupEvents() {
     const content = contentInput.value.trim();
     if (!title) { titleInput.focus(); return; }
     if (!content) { contentInput.focus(); return; }
-
     addMemory({
-      title: title,
+      title,
       type: document.getElementById('memory-type-input').value,
-      content: content,
+      content,
       tags: document.getElementById('memory-tags-input').value,
     });
-
     showToast('Memory stored ✓', 'success');
     closeMemoryModal();
     this.reset();
@@ -904,26 +792,21 @@ function setupEvents() {
     if (currentPage === 'dashboard') renderDashboard();
   });
 
-  // Close modals on overlay click
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', function (e) {
       if (e.target === this) this.classList.remove('open');
     });
   });
 
-  // API: Copy buttons
   document.querySelectorAll('.copy-btn').forEach(btn => {
     btn.addEventListener('click', function () {
-      const targetId = this.dataset.target;
-      const el = document.getElementById(targetId);
+      const el = document.getElementById(this.dataset.target);
       if (!el) return;
-      const text = el.textContent;
-      navigator.clipboard.writeText(text).then(() => {
+      navigator.clipboard.writeText(el.textContent).then(() => {
         showToast('Copied to clipboard ✓', 'success');
       }).catch(() => {
-        // Fallback
         const ta = document.createElement('textarea');
-        ta.value = text;
+        ta.value = el.textContent;
         document.body.appendChild(ta);
         ta.select();
         document.execCommand('copy');
@@ -933,23 +816,13 @@ function setupEvents() {
     });
   });
 
-  // API: Refresh buttons
   document.getElementById('refresh-mem-export').addEventListener('click', renderApiExports);
   document.getElementById('refresh-task-export').addEventListener('click', renderApiExports);
-
-  // API: Send to Jarvis
   document.getElementById('send-to-jarvis').addEventListener('click', function () {
-    console.log('Sent to Jarvis API', {
-      memories: getMemories(),
-      tasks: getTasks().filter(t => !t.done),
-    });
+    console.log('Sent to Jarvis API', { memories: getMemories(), tasks: getTasks().filter(t => !t.done) });
     showToast('Sent to Jarvis API ✓', 'success');
   });
 
-  // Mobile detection for FAB behavior
-  // Already handled in FAB click
-
-  // Theme-color meta on iOS
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) metaTheme.content = '#050810';
 }
@@ -977,24 +850,17 @@ function closeMemoryModal() {
 let installPromptEvent = null;
 
 function showInstallBanner() {
-  // Inline banner at top
   const banner = document.createElement('div');
   banner.id = 'install-banner';
-  banner.style.cssText = `
-    display:flex;align-items:center;gap:1rem;padding:0.75rem 1.25rem;
-    background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2);
-    border-radius:12px;margin-bottom:1rem;font-size:0.85rem;
-  `;
+  banner.style.cssText = 'display:flex;align-items:center;gap:1rem;padding:0.75rem 1.25rem;background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.2);border-radius:12px;margin-bottom:1rem;font-size:0.85rem;';
   banner.innerHTML = `
     <span style="font-size:1.2rem">⬡</span>
     <span style="flex:1">Install JARVIS for the full experience.</span>
     <button class="btn-primary" id="install-btn" style="padding:0.5rem 1rem;font-size:0.8rem">Install</button>
     <button id="dismiss-install" style="padding:0.3rem 0.6rem;color:var(--text-muted);font-size:1rem">✕</button>
   `;
-
   const main = document.querySelector('.main-content');
   main.insertBefore(banner, main.firstChild);
-
   document.getElementById('install-btn').addEventListener('click', function () {
     if (installPromptEvent) {
       installPromptEvent.prompt();
@@ -1004,10 +870,7 @@ function showInstallBanner() {
       });
     }
   });
-
-  document.getElementById('dismiss-install').addEventListener('click', function () {
-    banner.remove();
-  });
+  document.getElementById('dismiss-install').addEventListener('click', function () { banner.remove(); });
 }
 
 window.addEventListener('beforeinstallprompt', function (e) {
@@ -1016,40 +879,15 @@ window.addEventListener('beforeinstallprompt', function (e) {
   if (!document.getElementById('install-banner')) showInstallBanner();
 });
 
-/* ===== FUTURE-READY PLACEHOLDERS ===== */
-// FUTURE: Replace localStorage with API calls to your Jarvis database
-// async function syncToJarvisDB(data) {
-//   await fetch('https://your-jarvis-api.com/memory', {
-//     method: 'POST',
-//     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_KEY' },
-//     body: JSON.stringify(data)
-//   });
-// }
-
-// FUTURE: Real-time sync — call this after every task/memory mutation
-// syncToJarvisDB({ tasks: getTasks(), memories: getMemories() });
-
 /* ===== INIT ===== */
-let lastRolloverCheck = 0;
+let lastRolloverCheck = '';
 
 function init() {
-  syncWorldTime();
   updateClock();
   setInterval(updateClock, 1000);
-  setInterval(syncWorldTime, 3600000);
-
   rolloverOverdueTasks();
-
   setupEvents();
   navigateTo('dashboard');
-
-  // Auto-sync placeholder
-  if (CONFIG.AUTO_SYNC && CONFIG.JARVIS_API_URL) {
-    setInterval(function () {
-      // FUTURE: auto sync
-      // syncToJarvisDB({ tasks: getTasks(), memories: getMemories() });
-    }, CONFIG.SYNC_INTERVAL_MS);
-  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
