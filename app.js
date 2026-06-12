@@ -104,9 +104,6 @@ function deleteTask(id) {
   const removed = tasks.splice(idx, 1)[0];
   saveTasks(tasks);
   syncToBackend();
-  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
-    fetch(CONFIG.JARVIS_API_URL + '/tasks/' + id, { method: 'DELETE' }).catch(function () {});
-  }
   return removed;
 }
 
@@ -133,9 +130,6 @@ function deleteMemory(id) {
   const removed = memories.splice(idx, 1)[0];
   saveMemories(memories);
   syncToBackend();
-  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
-    fetch(CONFIG.JARVIS_API_URL + '/memories/' + id, { method: 'DELETE' }).catch(function () {});
-  }
   return removed;
 }
 
@@ -612,7 +606,6 @@ function flushSync() {
     syncQueue = [];
   }).catch(function (err) {
     console.warn('Sync to backend failed, will retry:', err.message);
-    if (syncQueue.length === 0) syncQueue.push(Date.now());
   }).finally(function () {
     syncInProgress = false;
     if (syncQueue.length > 0) setTimeout(flushSync, 2000);
@@ -621,115 +614,7 @@ function flushSync() {
 
 window.addEventListener('online', function () {
   if (syncQueue.length > 0) flushSync();
-  pullFromBackend();
 });
-
-/* ===== PULL FROM BACKEND (cross-device) ===== */
-function pullFromBackend() {
-  if (!navigator.onLine) return;
-  const apiUrl = CONFIG.JARVIS_API_URL;
-  if (!apiUrl) return;
-
-  fetch(apiUrl + '/tasks').then(function (r) {
-    if (!r.ok) throw new Error('Pull tasks failed');
-    return r.json();
-  }).then(function (remote) {
-    if (!remote || remote.length === 0) return;
-    var tasks = remote.map(function (t) {
-      return {
-        id: t.id,
-        title: t.title,
-        category: t.category || 'Other',
-        priority: t.priority || 'medium',
-        due: t.due || null,
-        notes: t.notes || '',
-        done: t.done || false,
-        completedAt: t.completed_at || t.completedAt || null,
-        created: t.created || new Date().toISOString(),
-      };
-    });
-    saveTasks(tasks);
-  }).catch(function (err) {
-    console.warn('Pull tasks from backend failed:', err.message);
-  });
-
-  fetch(apiUrl + '/memories').then(function (r) {
-    if (!r.ok) throw new Error('Pull memories failed');
-    return r.json();
-  }).then(function (remote) {
-    if (!remote || remote.length === 0) return;
-    var memories = remote.map(function (m) {
-      return {
-        id: m.id,
-        title: m.title,
-        type: m.type || 'note',
-        content: m.content || '',
-        tags: m.tags || [],
-        created: m.created || new Date().toISOString(),
-      };
-    });
-    saveMemories(memories);
-  }).catch(function (err) {
-    console.warn('Pull memories from backend failed:', err.message);
-  });
-}
-
-/* ===== MANUAL SYNC & HARD RESET ===== */
-function updateSyncStatus(state, msg) {
-  var el = document.getElementById('sync-status');
-  if (!el) return;
-  el.setAttribute('data-state', state);
-  var labels = { idle: 'Idle', syncing: 'Syncing…', success: 'Synced ✓', error: 'Failed ✕' };
-  el.textContent = msg || labels[state] || state;
-}
-
-function updateSyncStats() {
-  var te = document.getElementById('sync-local-tasks');
-  var me = document.getElementById('sync-local-memories');
-  if (te) te.textContent = getTasks().length;
-  if (me) me.textContent = getMemories().length;
-}
-
-function manualSync() {
-  if (!navigator.onLine) { showToast('You are offline', 'error'); return; }
-  var btn = document.getElementById('sync-now-btn');
-  if (btn) btn.disabled = true;
-  updateSyncStatus('syncing');
-  var lastEl = document.getElementById('sync-last');
-  if (lastEl) lastEl.textContent = 'Syncing…';
-
-  syncToBackend();
-  setTimeout(function () {
-    pullFromBackend();
-    setTimeout(function () {
-      updateSyncStatus('success');
-      updateSyncStats();
-      if (lastEl) lastEl.textContent = 'Last sync: ' + getWorldISO();
-      if (btn) btn.disabled = false;
-      showToast('Sync complete ✓', 'success');
-    }, 1000);
-  }, 1500);
-}
-
-function hardReset() {
-  if (!confirm('This will delete ALL local data and clear the remote database. Are you sure?')) return;
-  if (!confirm('This cannot be undone. Continue?')) return;
-  localStorage.removeItem('jarvis_tasks');
-  localStorage.removeItem('jarvis_memories');
-  updateSyncStats();
-  var lastEl = document.getElementById('sync-last');
-  if (lastEl) lastEl.textContent = 'Last sync: —';
-  updateSyncStatus('idle', 'Reset');
-  showToast('Local data cleared', 'info');
-  renderPage(currentPage);
-  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
-    fetch(CONFIG.JARVIS_API_URL + '/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tasks: [], memories: [] }),
-    }).then(function () { showToast('Remote database cleared', 'info'); }).catch(function () {});
-  }
-}
 
 /* ===== EVENT SETUP ===== */
 function setupEvents() {
@@ -937,11 +822,6 @@ function setupEvents() {
     console.log('Sent to Jarvis API', { memories: getMemories(), tasks: getTasks().filter(t => !t.done) });
     showToast('Sent to Jarvis API ✓', 'success');
   });
-  document.getElementById('sync-now-btn').addEventListener('click', manualSync);
-  document.getElementById('hard-reset-btn').addEventListener('click', hardReset);
-  document.getElementById('sync-now-btn').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); manualSync(); }
-  });
 
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) metaTheme.content = '#050810';
@@ -1005,16 +885,8 @@ let lastRolloverCheck = '';
 function init() {
   updateClock();
   setInterval(updateClock, 1000);
-
-  // Push local data to DB only if we have data (avoids clearing DB after hard reset)
-  var hasData = getTasks().length > 0 || getMemories().length > 0;
-  if (hasData) syncToBackend();
-  setTimeout(pullFromBackend, 500);
-  setInterval(pullFromBackend, 30000);
-
   rolloverOverdueTasks();
   setupEvents();
-  updateSyncStats();
   navigateTo('dashboard');
 }
 

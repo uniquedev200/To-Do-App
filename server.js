@@ -71,15 +71,6 @@ function istDateString() {
 }
 
 /* ===== PostgreSQL Connection ===== */
-const dns = require('dns');
-const origLookup = dns.lookup;
-dns.lookup = function (host, opts, cb) {
-  if (typeof opts === 'function') { cb = opts; opts = { family: 4, hints: dns.ADDRCONFIG }; }
-  else if (typeof opts === 'number') { opts = { family: 4, hints: dns.ADDRCONFIG }; }
-  else { opts = opts || {}; opts.family = 4; opts.hints = dns.ADDRCONFIG; }
-  origLookup(host, opts, cb);
-};
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -359,9 +350,6 @@ app.post('/api/sync', function (req, res) {
     return res.status(400).json({ error: 'Provide tasks and/or memories to sync' });
   }
 
-  const taskIds = Array.isArray(tasks) ? tasks.map(function (t) { return t.id; }).filter(Boolean) : null;
-  const memoryIds = Array.isArray(memories) ? memories.map(function (m) { return m.id; }).filter(Boolean) : null;
-
   const ops = [];
 
   if (Array.isArray(tasks)) {
@@ -387,25 +375,6 @@ app.post('/api/sync', function (req, res) {
         })
       );
     });
-    // Purge tasks not in the incoming payload
-    if (taskIds.length === 0) {
-      ops.push(
-        new Promise(function (resolve, reject) {
-          queryIST('DELETE FROM tasks', [], function (err, r) { err ? reject(err) : resolve(r); });
-        })
-      );
-    } else {
-      ops.push(
-        new Promise(function (resolve, reject) {
-          const placeholders = taskIds.map(function (_, i) { return '$' + (i + 1); }).join(',');
-          queryIST(
-            'DELETE FROM tasks WHERE id NOT IN (' + placeholders + ')',
-            taskIds,
-            function (err, r) { err ? reject(err) : resolve(r); }
-          );
-        })
-      );
-    }
   }
 
   if (Array.isArray(memories)) {
@@ -428,25 +397,6 @@ app.post('/api/sync', function (req, res) {
         })
       );
     });
-    // Purge memories not in the incoming payload
-    if (memoryIds.length === 0) {
-      ops.push(
-        new Promise(function (resolve, reject) {
-          queryIST('DELETE FROM memories', [], function (err, r) { err ? reject(err) : resolve(r); });
-        })
-      );
-    } else {
-      ops.push(
-        new Promise(function (resolve, reject) {
-          const placeholders = memoryIds.map(function (_, i) { return '$' + (i + 1); }).join(',');
-          queryIST(
-            'DELETE FROM memories WHERE id NOT IN (' + placeholders + ')',
-            memoryIds,
-            function (err, r) { err ? reject(err) : resolve(r); }
-          );
-        })
-      );
-    }
   }
 
   Promise.all(ops)
