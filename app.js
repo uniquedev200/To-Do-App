@@ -612,8 +612,59 @@ function flushSync() {
   });
 }
 
+/* ===== PULL FROM BACKEND (cross-device) ===== */
+function pullFromBackend() {
+  if (!navigator.onLine) return;
+  var apiUrl = CONFIG.JARVIS_API_URL;
+  if (!apiUrl) return;
+
+  fetch(apiUrl + '/tasks').then(function (r) {
+    if (!r.ok) throw new Error('Pull tasks failed');
+    return r.json();
+  }).then(function (remote) {
+    if (!remote || remote.length === 0) return;
+    var tasks = remote.map(function (t) {
+      return {
+        id: t.id,
+        title: t.title,
+        category: t.category || 'Other',
+        priority: t.priority || 'medium',
+        due: t.due || null,
+        notes: t.notes || '',
+        done: t.done || false,
+        completedAt: t.completed_at || t.completedAt || null,
+        created: t.created || new Date().toISOString(),
+      };
+    });
+    saveTasks(tasks);
+  }).catch(function (err) {
+    console.warn('Pull tasks from backend failed:', err.message);
+  });
+
+  fetch(apiUrl + '/memories').then(function (r) {
+    if (!r.ok) throw new Error('Pull memories failed');
+    return r.json();
+  }).then(function (remote) {
+    if (!remote || remote.length === 0) return;
+    var memories = remote.map(function (m) {
+      return {
+        id: m.id,
+        title: m.title,
+        type: m.type || 'note',
+        content: m.content || '',
+        tags: m.tags || [],
+        created: m.created || new Date().toISOString(),
+      };
+    });
+    saveMemories(memories);
+  }).catch(function (err) {
+    console.warn('Pull memories from backend failed:', err.message);
+  });
+}
+
 window.addEventListener('online', function () {
   if (syncQueue.length > 0) flushSync();
+  pullFromBackend();
 });
 
 /* ===== EVENT SETUP ===== */
@@ -886,6 +937,8 @@ function init() {
   updateClock();
   setInterval(updateClock, 1000);
   rolloverOverdueTasks();
+  pullFromBackend();
+  setInterval(pullFromBackend, 30000);
   setupEvents();
   navigateTo('dashboard');
 }
