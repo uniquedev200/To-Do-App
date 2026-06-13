@@ -35,14 +35,11 @@
         <button class="nav-item" data-page="tasks" aria-label="Tasks">
           <span class="nav-icon" aria-hidden="true">✓</span> Tasks
         </button>
-        <button class="nav-item" data-page="memory" aria-label="Memory Bank">
-          <span class="nav-icon" aria-hidden="true">🧠</span> Memory Bank
+        <button class="nav-item" data-page="knowledge" aria-label="Knowledge">
+          <span class="nav-icon" aria-hidden="true">🧠</span> Knowledge
         </button>
         <button class="nav-item" data-page="overview" aria-label="Overview">
           <span class="nav-icon" aria-hidden="true">📊</span> Overview
-        </button>
-        <button class="nav-item" data-page="api" aria-label="Jarvis API">
-          <span class="nav-icon" aria-hidden="true">🤖</span> Jarvis API
         </button>
       </nav>
       <div class="sidebar-footer">JARVIS v1.0 &middot; AI Core Active</div>
@@ -88,9 +85,9 @@
             <h3>⚠ Due Today</h3>
             <div id="dash-due-today"><div class="empty-state"><div class="empty-icon" aria-hidden="true">✓</div><p>All clear. No deadlines today.</p></div></div>
           </section>
-          <section class="dashboard-section glass" aria-label="Recent memories">
-            <h3>🧠 Recent Memories</h3>
-            <div id="dash-recent-memories"><div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Memory bank is empty. Start building your knowledge base.</p></div></div>
+          <section class="dashboard-section glass" aria-label="Recent knowledge">
+            <h3>🧠 Recent Knowledge</h3>
+            <div id="dash-recent-memories"><div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Knowledge bank is empty. Add goals and notes for Jarvis.</p></div></div>
           </section>
         </div>
       </section>
@@ -128,27 +125,15 @@
         </div>
       </section>
 
-      <!-- ==================== MEMORY BANK ==================== -->
-      <section class="page" id="page-memory" aria-label="Memory Bank">
+      <!-- ==================== KNOWLEDGE ==================== -->
+      <section class="page" id="page-knowledge" aria-label="Knowledge">
         <div class="page-header">
-          <h1>MEMORY BANK</h1>
-          <button class="btn-primary" id="add-memory-btn" aria-label="Add new memory">+ Store Memory</button>
+          <h1>KNOWLEDGE</h1>
+          <button class="btn-primary" id="add-memory-btn" aria-label="Add goal or note">+ Add</button>
         </div>
 
-        <div class="memory-controls">
-          <input class="input-field memory-search" id="memory-search" type="search" placeholder="Search memories..." aria-label="Search memories">
-        </div>
-
-        <div class="chip-filters" id="memory-filters" role="tablist" aria-label="Memory type filters">
-          <button class="chip active" data-filter="all" role="tab" aria-selected="true">All</button>
-          <button class="chip" data-filter="fact" role="tab" aria-selected="false">Fact</button>
-          <button class="chip" data-filter="goal" role="tab" aria-selected="false">Goal</button>
-          <button class="chip" data-filter="note" role="tab" aria-selected="false">Note</button>
-          <button class="chip" data-filter="context" role="tab" aria-selected="false">Context</button>
-        </div>
-
-        <div class="memory-list" id="memory-list">
-          <div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Memory bank is empty. Start building your knowledge base.</p></div>
+        <div id="knowledge-list">
+          <div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Knowledge bank is empty. Add goals and notes for Jarvis to remember.</p></div>
         </div>
       </section>
 
@@ -207,37 +192,6 @@
         </section>
       </section>
 
-      <!-- ==================== JARVIS API ==================== -->
-      <section class="page" id="page-api" aria-label="Jarvis API Export">
-        <div class="page-header"><h1>JARVIS API</h1></div>
-
-        <div class="api-grid">
-          <div class="api-panel glass">
-            <h3>Memory Context</h3>
-            <div class="api-timestamp" id="mem-ts">Last updated: —</div>
-            <div class="code-block"><pre id="mem-export">{ }</pre></div>
-            <div class="api-panel-actions">
-              <button class="btn-primary copy-btn" data-target="mem-export" aria-label="Copy memory context">📋 Copy</button>
-              <button class="btn-secondary" id="refresh-mem-export">↻ Refresh</button>
-            </div>
-          </div>
-          <div class="api-panel glass">
-            <h3>Active Tasks</h3>
-            <div class="api-timestamp" id="task-ts">Last updated: —</div>
-            <div class="code-block"><pre id="task-export">{ }</pre></div>
-            <div class="api-panel-actions">
-              <button class="btn-primary copy-btn" data-target="task-export" aria-label="Copy active tasks">📋 Copy</button>
-              <button class="btn-secondary" id="refresh-task-export">↻ Refresh</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="api-sync-row" style="margin-bottom:1rem">
-          <button class="btn-primary" id="send-to-jarvis" aria-label="Send data to Jarvis API">🚀 Send to Jarvis</button>
-          <span style="font-size:0.78rem;color:var(--text-muted)">Data is ready for AI consumption</span>
-        </div>
-
-        <div class="api-notice">// Future: This will auto-sync to your Jarvis AI database on every change</div>
       </section>
 
     </main>
@@ -253,17 +207,13 @@
       <span class="nav-icon" aria-hidden="true">✓</span>
       <span class="nav-label">Tasks</span>
     </button>
-    <button class="bottom-nav-item" data-page="memory" aria-label="Memory">
+    <button class="bottom-nav-item" data-page="knowledge" aria-label="Knowledge">
       <span class="nav-icon" aria-hidden="true">🧠</span>
-      <span class="nav-label">Memory</span>
+      <span class="nav-label">Knowledge</span>
     </button>
     <button class="bottom-nav-item" data-page="overview" aria-label="Overview">
       <span class="nav-icon" aria-hidden="true">📊</span>
       <span class="nav-label">Overview</span>
-    </button>
-    <button class="bottom-nav-item" data-page="api" aria-label="API">
-      <span class="nav-icon" aria-hidden="true">🤖</span>
-      <span class="nav-label">API</span>
     </button>
   </nav>
 
@@ -324,38 +274,38 @@
     </div>
   </div>
 
-  <!-- ===== ADD MEMORY MODAL ===== -->
-  <div class="modal-overlay" id="memory-modal" role="dialog" aria-modal="true" aria-labelledby="memory-modal-title">
+  <!-- ===== ADD KNOWLEDGE MODAL ===== -->
+  <div class="modal-overlay" id="knowledge-modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-modal-title">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="memory-modal-title">Store Memory</h2>
-        <button class="modal-close" id="memory-modal-close" aria-label="Dismiss">✕</button>
+        <h2 id="knowledge-modal-title">Add to Knowledge</h2>
+        <button class="modal-close" id="knowledge-modal-close" aria-label="Dismiss">✕</button>
       </div>
-      <form id="memory-form" novalidate>
+      <form id="knowledge-form" novalidate>
         <div class="form-group">
-          <label for="memory-title-input">Title</label>
-          <input class="input-field" id="memory-title-input" type="text" placeholder="Memory title..." required aria-required="true">
+          <label for="knowledge-title-input">Title</label>
+          <input class="input-field" id="knowledge-title-input" type="text" placeholder="Short title..." required aria-required="true">
         </div>
         <div class="form-group">
-          <label for="memory-type-input">Type</label>
-          <select class="input-field" id="memory-type-input">
-            <option value="fact">Fact</option>
-            <option value="goal">Goal</option>
-            <option value="note">Note</option>
-            <option value="context">Context</option>
+          <label for="knowledge-type-input">Type</label>
+          <select class="input-field" id="knowledge-type-input">
+            <option value="goal">🎯 Goal</option>
+            <option value="fact">💡 Fact</option>
+            <option value="note">📝 Note</option>
+            <option value="context">🔗 Context</option>
           </select>
         </div>
         <div class="form-group">
-          <label for="memory-content-input">Content</label>
-          <textarea class="input-field" id="memory-content-input" placeholder="What does Jarvis need to know?" rows="4" required aria-required="true"></textarea>
+          <label for="knowledge-content-input">Details</label>
+          <textarea class="input-field" id="knowledge-content-input" placeholder="What should Jarvis know?" rows="4" required aria-required="true"></textarea>
         </div>
         <div class="form-group">
-          <label for="memory-tags-input">Tags (comma-separated)</label>
-          <input class="input-field" id="memory-tags-input" type="text" placeholder="ai, goals, project">
+          <label for="knowledge-tags-input">Tags (comma-separated)</label>
+          <input class="input-field" id="knowledge-tags-input" type="text" placeholder="ai, goals, project">
         </div>
         <div class="form-actions">
-          <button type="button" class="btn-secondary modal-cancel" id="memory-cancel">Dismiss</button>
-          <button type="submit" class="btn-primary" id="memory-submit">Store Memory</button>
+          <button type="button" class="btn-secondary modal-cancel" id="knowledge-cancel">Dismiss</button>
+          <button type="submit" class="btn-primary" id="knowledge-submit">Save</button>
         </div>
       </form>
     </div>

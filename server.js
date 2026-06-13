@@ -282,25 +282,24 @@ app.delete('/api/memories/:id', function (req, res) {
 
 /* ----- Export / Sync ----- */
 
-// GET /api/export — full context for AI consumption
+// GET /api/export — full context for AI consumption (agent tool-call friendly)
 app.get('/api/export', function (req, res) {
-  const today = istDateString(); // IST-aware "today", not UTC
+  const today = istDateString();
 
   const activePromise = new Promise(function (resolve, reject) {
-    queryIST('SELECT title, priority, category, due, notes FROM tasks WHERE done = false ORDER BY created DESC', [], function (err, r) { err ? reject(err) : resolve(r); });
+    queryIST('SELECT id, title, priority, category, due, notes, created FROM tasks WHERE done = false ORDER BY created DESC', [], function (err, r) { err ? reject(err) : resolve(r); });
   });
   const donePromise = new Promise(function (resolve, reject) {
-    queryIST('SELECT title, priority, category, completed_at FROM tasks WHERE done = true AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 50', [], function (err, r) { err ? reject(err) : resolve(r); });
+    queryIST('SELECT id, title, priority, category, completed_at FROM tasks WHERE done = true AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 50', [], function (err, r) { err ? reject(err) : resolve(r); });
   });
   const memoriesPromise = new Promise(function (resolve, reject) {
-    queryIST('SELECT type, title, content, tags FROM memories ORDER BY created DESC', [], function (err, r) { err ? reject(err) : resolve(r); });
+    queryIST('SELECT id, type, title, content, tags, created FROM memories ORDER BY created DESC', [], function (err, r) { err ? reject(err) : resolve(r); });
   });
   const statsPromise = new Promise(function (resolve, reject) {
     queryIST('SELECT COUNT(*)::int AS total, SUM(CASE WHEN done = false THEN 1 ELSE 0 END)::int AS active, SUM(CASE WHEN done = true THEN 1 ELSE 0 END)::int AS done FROM tasks', [], function (err, r) { err ? reject(err) : resolve(r); });
   });
-  // Use JS-computed IST date for overdue check — avoids CURRENT_DATE being UTC on Render
   const overduePromise = new Promise(function (resolve, reject) {
-    queryIST('SELECT COUNT(*)::int AS count FROM tasks WHERE done = false AND due IS NOT NULL AND due < $1', [today], function (err, r) { err ? reject(err) : resolve(r); });
+    queryIST('SELECT id, title, priority, category, due, notes FROM tasks WHERE done = false AND due IS NOT NULL AND due < $1', [today], function (err, r) { err ? reject(err) : resolve(r); });
   });
 
   Promise.all([activePromise, donePromise, memoriesPromise, statsPromise, overduePromise])
@@ -309,31 +308,48 @@ app.get('/api/export', function (req, res) {
       const completed = doneResult.rows;
       const memories = memoriesResult.rows;
       const stats = statsResult.rows[0];
-      const overdueCount = overdueResult.rows[0].count;
+      const overdue = overdueResult.rows;
+
+      const goals = memories.filter(function (m) { return m.type === 'goal'; });
+      const facts = memories.filter(function (m) { return m.type === 'fact'; });
+      const notes = memories.filter(function (m) { return m.type === 'note'; });
+      const contexts = memories.filter(function (m) { return m.type === 'context'; });
 
       res.json({
         generated: istISO(),
-        memories: memories.map(function (m) {
-          return { type: m.type, title: m.title, content: m.content, tags: m.tags || [] };
-        }),
-        goals: memories.filter(function (m) { return m.type === 'goal'; }).map(function (m) { return m.title; }),
+        timezone: 'Asia/Kolkata (IST, UTC+5:30)',
+        user_context: {
+          name: 'Commander',
+          goals: goals.map(function (g) { return { id: g.id, title: g.title, content: g.content, tags: g.tags || [] }; }),
+          facts: facts.map(function (f) { return { id: f.id, title: f.title, content: f.content, tags: f.tags || [] }; }),
+          notes: notes.map(function (n) { return { id: n.id, title: n.title, content: n.content, tags: n.tags || [] }; }),
+          contexts: contexts.map(function (c) { return { id: c.id, title: c.title, content: c.content, tags: c.tags || [] }; }),
+        },
         task_context: {
-          active_count: stats.active,
-          overdue_count: overdueCount,
-          overdue_tasks: active.filter(function (t) { return t.due && t.due < today; }).map(function (t) {
-            return { title: t.title, priority: t.priority, category: t.category, due: t.due };
+          stats: { total: stats.total, active: stats.active, completed: stats.done },
+          active_tasks: active.map(function (t) {
+            return { id: t.id, title: t.title, priority: t.priority, category: t.category, due: t.due || null, notes: t.notes || null, created: t.created };
+          }),
+          overdue_tasks: overdue.map(function (t) {
+            return { id: t.id, title: t.title, priority: t.priority, category: t.category, due: t.due, notes: t.notes || null };
+          }),
+          completion_history: completed.map(function (t) {
+            return { id: t.id, title: t.title, priority: t.priority, category: t.category, completed_at: t.completed_at };
           }),
         },
-        active_tasks: active.map(function (t) {
-          return { title: t.title, priority: t.priority, category: t.category, due: t.due || null, notes: t.notes || null };
-        }),
-        completion_history: completed.map(function (t) {
-          return { title: t.title, priority: t.priority, category: t.category, completed_at: t.completed_at };
-        }),
         trends: {
           total_completed: stats.done,
-          overdue: overdueCount,
+          overdue_count: overdue.length,
           completion_rate_pct: stats.total === 0 ? 0 : Math.round((stats.done / stats.total) * 100),
+        },
+        agent_actions: {
+          available_tools: [
+            { method: 'GET', path: '/api/tasks', description: 'List all tasks' },
+            { method: 'DELETE', path: '/api/tasks/:id', description: 'Delete a task by ID' },
+            { method: 'GET', path: '/api/memories', description: 'List all memories' },
+            { method: 'DELETE', path: '/api/memories/:id', description: 'Delete a memory by ID' },
+            { method: 'GET', path: '/api/export', description: 'Full context export (this endpoint)' },
+          ],
         },
       });
     })
@@ -349,6 +365,9 @@ app.post('/api/sync', function (req, res) {
   if (!tasks && !memories) {
     return res.status(400).json({ error: 'Provide tasks and/or memories to sync' });
   }
+
+  const taskIds = Array.isArray(tasks) ? tasks.map(function (t) { return t.id; }).filter(Boolean) : null;
+  const memoryIds = Array.isArray(memories) ? memories.map(function (m) { return m.id; }).filter(Boolean) : null;
 
   const ops = [];
 
@@ -375,6 +394,16 @@ app.post('/api/sync', function (req, res) {
         })
       );
     });
+    if (taskIds && taskIds.length === 0) {
+      ops.push(new Promise(function (resolve, reject) {
+        queryIST('DELETE FROM tasks', [], function (err, r) { err ? reject(err) : resolve(r); });
+      }));
+    } else if (taskIds && taskIds.length > 0) {
+      ops.push(new Promise(function (resolve, reject) {
+        const ph = taskIds.map(function (_, i) { return '$' + (i + 1); }).join(',');
+        queryIST('DELETE FROM tasks WHERE id NOT IN (' + ph + ')', taskIds, function (err, r) { err ? reject(err) : resolve(r); });
+      }));
+    }
   }
 
   if (Array.isArray(memories)) {
@@ -397,6 +426,16 @@ app.post('/api/sync', function (req, res) {
         })
       );
     });
+    if (memoryIds && memoryIds.length === 0) {
+      ops.push(new Promise(function (resolve, reject) {
+        queryIST('DELETE FROM memories', [], function (err, r) { err ? reject(err) : resolve(r); });
+      }));
+    } else if (memoryIds && memoryIds.length > 0) {
+      ops.push(new Promise(function (resolve, reject) {
+        const ph = memoryIds.map(function (_, i) { return '$' + (i + 1); }).join(',');
+        queryIST('DELETE FROM memories WHERE id NOT IN (' + ph + ')', memoryIds, function (err, r) { err ? reject(err) : resolve(r); });
+      }));
+    }
   }
 
   Promise.all(ops)

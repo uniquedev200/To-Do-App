@@ -81,7 +81,7 @@ function addTask(data) {
   };
   tasks.unshift(task);
   saveTasks(tasks);
-  syncToBackend();
+  lastMutation = Date.now(); syncToBackend();
   return task;
 }
 
@@ -92,7 +92,7 @@ function toggleTaskDone(id) {
     task.done = !task.done;
     task.completedAt = task.done ? getWorldISO() : null;
     saveTasks(tasks);
-    syncToBackend();
+    lastMutation = Date.now(); syncToBackend();
   }
   return task;
 }
@@ -103,7 +103,10 @@ function deleteTask(id) {
   if (idx === -1) return null;
   const removed = tasks.splice(idx, 1)[0];
   saveTasks(tasks);
-  syncToBackend();
+  lastMutation = Date.now(); syncToBackend();
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    fetch(CONFIG.JARVIS_API_URL + '/tasks/' + id, { method: 'DELETE' }).catch(function () {});
+  }
   return removed;
 }
 
@@ -119,7 +122,7 @@ function addMemory(data) {
   };
   memories.unshift(memory);
   saveMemories(memories);
-  syncToBackend();
+  lastMutation = Date.now(); syncToBackend();
   return memory;
 }
 
@@ -129,7 +132,10 @@ function deleteMemory(id) {
   if (idx === -1) return null;
   const removed = memories.splice(idx, 1)[0];
   saveMemories(memories);
-  syncToBackend();
+  lastMutation = Date.now(); syncToBackend();
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    fetch(CONFIG.JARVIS_API_URL + '/memories/' + id, { method: 'DELETE' }).catch(function () {});
+  }
   return removed;
 }
 
@@ -184,9 +190,8 @@ function renderPage(page) {
   switch (page) {
     case 'dashboard': renderDashboard(); break;
     case 'tasks': renderTasks(); break;
-    case 'memory': renderMemory(); break;
+    case 'knowledge': renderKnowledge(); break;
     case 'overview': renderOverview(); break;
-    case 'api': renderApiExports(); break;
   }
 }
 
@@ -267,7 +272,7 @@ function renderDashboard() {
   const recent = memories.slice(0, 3);
   const memContainer = document.getElementById('dash-recent-memories');
   if (recent.length === 0) {
-    memContainer.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Memory bank is empty. Start building your knowledge base.</p></div>';
+    memContainer.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Knowledge bank is empty. Add goals and notes for Jarvis.</p></div>';
   } else {
     memContainer.innerHTML = recent.map(m => `
       <div class="due-item">
@@ -316,64 +321,119 @@ function renderTasks() {
     return;
   }
 
-  list.innerHTML = tasks.map((t, i) => {
-    const overdue = isOverdue(t);
-    return `
-    <div class="task-card glass card-enter${overdue ? ' task-overdue' : ''}" style="animation-delay:${i * 50}ms" role="listitem" data-id="${t.id}">
-      <div class="task-check${t.done ? ' checked' : ''}" role="checkbox" aria-checked="${t.done}" aria-label="Toggle ${escHtml(t.title)}" tabindex="0" data-id="${t.id}"></div>
-      <div class="task-body">
-        <div class="task-title">${escHtml(t.title)}${overdue ? ' <span class="badge badge-high" style="font-size:0.65rem">OVERDUE</span>' : ''}</div>
-        <div class="task-meta">
-          <span class="badge badge-${t.priority}">${t.priority}</span>
-          <span class="badge badge-category">${t.category}</span>
-          ${t.due ? `<span class="task-meta-item${overdue ? ' task-meta-overdue' : ''}">📅 ${t.due}</span>` : ''}
-          <span class="task-meta-item">${timeAgo(t.created)}</span>
-        </div>
-        ${t.notes ? `<div class="task-note-preview">${escHtml(t.notes)}</div>` : ''}
-      </div>
-      <button class="task-delete" data-id="${t.id}" aria-label="Delete ${escHtml(t.title)}">✕</button>
-    </div>
-  `}).join('');
+  list.innerHTML = '';
+  tasks.forEach(function (t, i) {
+    var overdue = isOverdue(t);
+    var card = document.createElement('div');
+    card.className = 'task-card glass card-enter' + (overdue ? ' task-overdue' : '');
+    card.style.animationDelay = (i * 50) + 'ms';
+    card.setAttribute('role', 'listitem');
+
+    var check = document.createElement('div');
+    check.className = 'task-check' + (t.done ? ' checked' : '');
+    check.setAttribute('role', 'checkbox');
+    check.setAttribute('aria-checked', t.done);
+    check.setAttribute('aria-label', 'Toggle ' + escHtml(t.title));
+    check.setAttribute('tabindex', '0');
+    check.addEventListener('click', function () {
+      var task = toggleTaskDone(t.id);
+      if (task) {
+        showToast(task.done ? 'Task completed ✓' : 'Task reopened', 'success');
+        renderTasks();
+        if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+      }
+    });
+    check.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); }
+    });
+
+    var body = document.createElement('div');
+    body.className = 'task-body';
+
+    var title = document.createElement('div');
+    title.className = 'task-title';
+    title.innerHTML = escHtml(t.title) + (overdue ? ' <span class="badge badge-high" style="font-size:0.65rem">OVERDUE</span>' : '');
+
+    var meta = document.createElement('div');
+    meta.className = 'task-meta';
+    meta.innerHTML =
+      '<span class="badge badge-' + t.priority + '">' + t.priority + '</span>' +
+      '<span class="badge badge-category">' + t.category + '</span>' +
+      (t.due ? '<span class="task-meta-item' + (overdue ? ' task-meta-overdue' : '') + '">📅 ' + t.due + '</span>' : '') +
+      '<span class="task-meta-item">' + timeAgo(t.created) + '</span>';
+
+    body.appendChild(title);
+    body.appendChild(meta);
+
+    if (t.notes) {
+      var note = document.createElement('div');
+      note.className = 'task-note-preview';
+      note.textContent = t.notes;
+      body.appendChild(note);
+    }
+
+    var del = document.createElement('button');
+    del.className = 'task-delete';
+    del.setAttribute('aria-label', 'Delete ' + escHtml(t.title));
+    del.textContent = '✕';
+    del.addEventListener('click', function () {
+      var removed = deleteTask(t.id);
+      if (removed) {
+        showToast('Task deleted.', 'info', function () {
+          var tasks = getTasks(); tasks.unshift(removed); saveTasks(tasks);
+          lastMutation = Date.now(); syncToBackend();
+          renderTasks();
+          if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+        });
+        renderTasks();
+        if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+      }
+    });
+
+    card.appendChild(check);
+    card.appendChild(body);
+    card.appendChild(del);
+    list.appendChild(card);
+  });
 }
 
-/* ===== MEMORY ===== */
-let memoryFilter = 'all';
-let memorySearch = '';
+/* ===== KNOWLEDGE (Goals & Notes) ===== */
+function renderKnowledge() {
+  const memories = getMemories();
+  const container = document.getElementById('knowledge-list');
 
-function renderMemory() {
-  let memories = getMemories();
-  const list = document.getElementById('memory-list');
+  var goals = memories.filter(function (m) { return m.type === 'goal'; });
+  var notes = memories.filter(function (m) { return m.type !== 'goal'; });
 
-  if (memoryFilter !== 'all') memories = memories.filter(m => m.type === memoryFilter);
+  var goalsHtml = goals.length === 0
+    ? '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon" aria-hidden="true">🎯</div><p>No goals defined yet.</p></div>'
+    : goals.map(function (m, i) { return `
+      <div class="knowledge-card glass card-enter" style="animation-delay:${i*50}ms" data-id="${m.id}">
+        <div class="knowledge-card-header">
+          <span class="badge badge-goal">Goal</span>
+          <button class="knowledge-delete" data-id="${m.id}" aria-label="Delete">✕</button>
+        </div>
+        <div class="knowledge-card-title">${escHtml(m.title)}</div>
+        <div class="knowledge-card-content">${escHtml(m.content)}</div>
+        ${m.tags && m.tags.length ? '<div class="knowledge-card-tags">' + m.tags.map(function (t) { return '<span class="knowledge-tag">#' + escHtml(t) + '</span>'; }).join('') + '</div>' : ''}
+      </div>`;
+    }).join('');
 
-  if (memorySearch) {
-    const q = memorySearch.toLowerCase();
-    memories = memories.filter(m =>
-      m.title.toLowerCase().includes(q) ||
-      m.content.toLowerCase().includes(q) ||
-      m.tags.some(t => t.toLowerCase().includes(q))
-    );
-  }
+  var notesHtml = notes.length === 0
+    ? '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon" aria-hidden="true">📝</div><p>No notes stored yet.</p></div>'
+    : notes.map(function (m, i) { return `
+      <div class="knowledge-card glass card-enter" style="animation-delay:${i*50}ms" data-id="${m.id}">
+        <div class="knowledge-card-header">
+          <span class="badge badge-${m.type}">${m.type}</span>
+          <button class="knowledge-delete" data-id="${m.id}" aria-label="Delete">✕</button>
+        </div>
+        <div class="knowledge-card-title">${escHtml(m.title)}</div>
+        <div class="knowledge-card-content">${escHtml(m.content)}</div>
+        ${m.tags && m.tags.length ? '<div class="knowledge-card-tags">' + m.tags.map(function (t) { return '<span class="knowledge-tag">#' + escHtml(t) + '</span>'; }).join('') + '</div>' : ''}
+      </div>`;
+    }).join('');
 
-  if (memories.length === 0) {
-    list.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">🧠</div><p>Memory bank is empty. Start building your knowledge base.</p></div>';
-    return;
-  }
-
-  list.innerHTML = memories.map((m, i) => `
-    <div class="memory-card glass card-enter" style="animation-delay:${i * 50}ms" data-id="${m.id}">
-      <div class="memory-card-header">
-        <div><span class="badge badge-${m.type}">${m.type}</span></div>
-        <button class="memory-delete" data-id="${m.id}" aria-label="Delete ${escHtml(m.title)}">Delete</button>
-      </div>
-      <div class="memory-card-title">${escHtml(m.title)}</div>
-      <div class="memory-card-content">${escHtml(m.content)}</div>
-      ${m.tags.length ? `<div class="memory-card-tags">${m.tags.map(t => `<span class="memory-tag">#${escHtml(t)}</span>`).join('')}</div>` : ''}
-      <div class="memory-card-footer">
-        <span class="memory-date">${timeAgo(m.created)}</span>
-      </div>
-    </div>
-  `).join('');
+  container.innerHTML = '<div class="knowledge-section"><h3 class="knowledge-section-title">🎯 Goals</h3><div class="knowledge-grid">' + goalsHtml + '</div></div><div class="knowledge-section"><h3 class="knowledge-section-title">📝 Notes & Facts</h3><div class="knowledge-grid">' + notesHtml + '</div></div>';
 }
 
 /* ===== OVERVIEW ===== */
@@ -546,7 +606,7 @@ function rolloverOverdueTasks() {
   });
   if (rolled > 0) {
     saveTasks(tasks);
-    syncToBackend();
+    lastMutation = Date.now(); syncToBackend();
     showToast(rolled + ' overdue task' + (rolled > 1 ? 's' : '') + ' rolled over to today', 'info');
     if (document.getElementById('page-' + currentPage)) renderPage(currentPage);
   }
@@ -579,6 +639,7 @@ function isOverdue(task) {
 /* ===== AUTO-SYNC TO BACKEND ===== */
 let syncQueue = [];
 let syncInProgress = false;
+let lastMutation = 0;
 
 function syncToBackend() {
   if (!CONFIG.AUTO_SYNC) return;
@@ -606,6 +667,7 @@ function flushSync() {
     syncQueue = [];
   }).catch(function (err) {
     console.warn('Sync to backend failed, will retry:', err.message);
+    if (syncQueue.length === 0) syncQueue.push(Date.now());
   }).finally(function () {
     syncInProgress = false;
     if (syncQueue.length > 0) setTimeout(flushSync, 2000);
@@ -617,6 +679,10 @@ function pullFromBackend() {
   if (!navigator.onLine) return;
   var apiUrl = CONFIG.JARVIS_API_URL;
   if (!apiUrl) return;
+  if (syncInProgress || syncQueue.length > 0) {
+    setTimeout(pullFromBackend, 2000);
+    return;
+  }
 
   fetch(apiUrl + '/tasks').then(function (r) {
     if (!r.ok) throw new Error('Pull tasks failed');
@@ -669,7 +735,8 @@ window.addEventListener('online', function () {
 
 /* ===== EVENT SETUP ===== */
 function setupEvents() {
-  document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(el => {
+  try {
+    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(el => {
     el.addEventListener('click', function () { navigateTo(this.dataset.page); });
   });
 
@@ -690,7 +757,7 @@ function setupEvents() {
   });
 
   document.getElementById('fab').addEventListener('click', function () {
-    if (currentPage === 'memory') openMemoryModal();
+    if (currentPage === 'knowledge') openKnowledgeModal();
     else openTaskModal();
   });
 
@@ -713,63 +780,18 @@ function setupEvents() {
 
   document.getElementById('add-task-btn').addEventListener('click', openTaskModal);
 
-  document.getElementById('task-list').addEventListener('click', function (e) {
-    const target = e.target.closest('[data-id]');
+  document.getElementById('add-memory-btn').addEventListener('click', openKnowledgeModal);
+
+  document.getElementById('knowledge-list').addEventListener('click', function (e) {
+    console.log('knowledge pressed');
+    const target = e.target.closest('.knowledge-delete');
     if (!target) return;
-    const id = Number(target.dataset.id);
-    if (target.classList.contains('task-check')) {
-      const task = toggleTaskDone(id);
-      if (task) {
-        showToast(task.done ? 'Task completed ✓' : 'Task reopened', 'success');
-        renderTasks();
-        if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
-      }
-    }
-    if (target.classList.contains('task-delete')) {
-      const removed = deleteTask(id);
-      if (removed) {
-        showToast('Task deleted.', 'info', function () {
-          const tasks = getTasks(); tasks.unshift(removed); saveTasks(tasks);
-          renderTasks();
-          if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
-        });
-        renderTasks();
-        if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
-      }
-    }
-  });
-
-  document.getElementById('task-list').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      const target = e.target.closest('.task-check');
-      if (target) { e.preventDefault(); target.click(); }
-    }
-  });
-
-  document.getElementById('memory-search').addEventListener('input', function () {
-    memorySearch = this.value; renderMemory();
-  });
-
-  document.querySelectorAll('#memory-filters .chip').forEach(chip => {
-    chip.addEventListener('click', function () {
-      document.querySelectorAll('#memory-filters .chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-selected', 'false'); });
-      this.classList.add('active');
-      this.setAttribute('aria-selected', 'true');
-      memoryFilter = this.dataset.filter;
-      renderMemory();
-    });
-  });
-
-  document.getElementById('add-memory-btn').addEventListener('click', openMemoryModal);
-
-  document.getElementById('memory-list').addEventListener('click', function (e) {
-    const target = e.target.closest('.memory-delete');
-    if (!target) return;
+    console.log('knowledge delete pressed', target.dataset.id);
     const id = Number(target.dataset.id);
     const removed = deleteMemory(id);
     if (removed) {
-      showToast('Memory deleted.', 'info');
-      renderMemory();
+      showToast('Deleted', 'info');
+      renderKnowledge();
       if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
     }
   });
@@ -819,27 +841,27 @@ function setupEvents() {
     if (currentPage === 'dashboard') renderDashboard();
   });
 
-  document.getElementById('memory-modal-close').addEventListener('click', closeMemoryModal);
-  document.getElementById('memory-cancel').addEventListener('click', closeMemoryModal);
+  document.getElementById('knowledge-modal-close').addEventListener('click', closeKnowledgeModal);
+  document.getElementById('knowledge-cancel').addEventListener('click', closeKnowledgeModal);
 
-  document.getElementById('memory-form').addEventListener('submit', function (e) {
+  document.getElementById('knowledge-form').addEventListener('submit', function (e) {
     e.preventDefault();
-    const titleInput = document.getElementById('memory-title-input');
-    const contentInput = document.getElementById('memory-content-input');
+    const titleInput = document.getElementById('knowledge-title-input');
+    const contentInput = document.getElementById('knowledge-content-input');
     const title = titleInput.value.trim();
     const content = contentInput.value.trim();
     if (!title) { titleInput.focus(); return; }
     if (!content) { contentInput.focus(); return; }
     addMemory({
-      title,
-      type: document.getElementById('memory-type-input').value,
-      content,
-      tags: document.getElementById('memory-tags-input').value,
+      title: title,
+      type: document.getElementById('knowledge-type-input').value,
+      content: content,
+      tags: document.getElementById('knowledge-tags-input').value,
     });
-    showToast('Memory stored ✓', 'success');
-    closeMemoryModal();
+    showToast('Saved ✓', 'success');
+    closeKnowledgeModal();
     this.reset();
-    if (currentPage === 'memory') renderMemory();
+    if (currentPage === 'knowledge') renderKnowledge();
     if (currentPage === 'dashboard') renderDashboard();
   });
 
@@ -849,33 +871,9 @@ function setupEvents() {
     });
   });
 
-  document.querySelectorAll('.copy-btn').forEach(btn => {
-    btn.addEventListener('click', function () {
-      const el = document.getElementById(this.dataset.target);
-      if (!el) return;
-      navigator.clipboard.writeText(el.textContent).then(() => {
-        showToast('Copied to clipboard ✓', 'success');
-      }).catch(() => {
-        const ta = document.createElement('textarea');
-        ta.value = el.textContent;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-        showToast('Copied to clipboard ✓', 'success');
-      });
-    });
-  });
-
-  document.getElementById('refresh-mem-export').addEventListener('click', renderApiExports);
-  document.getElementById('refresh-task-export').addEventListener('click', renderApiExports);
-  document.getElementById('send-to-jarvis').addEventListener('click', function () {
-    console.log('Sent to Jarvis API', { memories: getMemories(), tasks: getTasks().filter(t => !t.done) });
-    showToast('Sent to Jarvis API ✓', 'success');
-  });
-
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) metaTheme.content = '#050810';
+  } catch (e) { console.error('setupEvents failed:', e); }
 }
 
 /* ===== MODAL HELPERS ===== */
@@ -888,13 +886,15 @@ function closeTaskModal() {
   document.getElementById('task-form').reset();
   document.querySelector('#task-priority-input .segmented-option[data-value="medium"]').click();
 }
-function openMemoryModal() {
-  document.getElementById('memory-modal').classList.add('open');
-  document.getElementById('memory-title-input').focus();
+
+/* ===== KNOWLEDGE MODAL HELPERS ===== */
+function openKnowledgeModal() {
+  document.getElementById('knowledge-modal').classList.add('open');
+  document.getElementById('knowledge-title-input').focus();
 }
-function closeMemoryModal() {
-  document.getElementById('memory-modal').classList.remove('open');
-  document.getElementById('memory-form').reset();
+function closeKnowledgeModal() {
+  document.getElementById('knowledge-modal').classList.remove('open');
+  document.getElementById('knowledge-form').reset();
 }
 
 /* ===== INSTALL BANNER ===== */
@@ -934,13 +934,16 @@ window.addEventListener('beforeinstallprompt', function (e) {
 let lastRolloverCheck = '';
 
 function init() {
-  updateClock();
-  setInterval(updateClock, 1000);
-  rolloverOverdueTasks();
-  pullFromBackend();
-  setInterval(pullFromBackend, 30000);
-  setupEvents();
-  navigateTo('dashboard');
+  console.log('init');
+  try {
+    updateClock();
+    setInterval(updateClock, 1000);
+    rolloverOverdueTasks();
+    pullFromBackend();
+    setInterval(pullFromBackend, 30000);
+    setupEvents();
+    navigateTo('dashboard');
+  } catch (e) { console.error('init error:', e); }
 }
 
 document.addEventListener('DOMContentLoaded', init);
