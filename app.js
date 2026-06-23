@@ -5,6 +5,34 @@ const CONFIG = {
   SYNC_INTERVAL_MS: 30000,
 };
 
+/* ===== PENDING OPERATIONS (retry queue) ===== */
+var pendingOps = [];
+try { var saved = JSON.parse(localStorage.getItem('jarvis_pending_ops')); if (Array.isArray(saved)) pendingOps = saved; } catch (e) {}
+function savePendingOps() { try { localStorage.setItem('jarvis_pending_ops', JSON.stringify(pendingOps)); } catch (e) {} }
+function addPendingOp(method, url) {
+  pendingOps.push({ method: method, url: url, id: Date.now() });
+  savePendingOps();
+}
+function removePendingOp(url) {
+  pendingOps = pendingOps.filter(function (o) { return o.url !== url; });
+  savePendingOps();
+}
+function processPendingOps(cb) {
+  if (pendingOps.length === 0) { if (cb) cb(); return; }
+  var ops = pendingOps.slice();
+  var next = function () {
+    if (ops.length === 0) { savePendingOps(); if (cb) cb(); return; }
+    var op = ops.shift();
+    fetch(op.url, { method: op.method }).then(function (r) {
+      if (r.ok) { removePendingOp(op.url); }
+      next();
+    }).catch(function () {
+      next();
+    });
+  };
+  next();
+}
+
 /* ===== IST TIME UTILITIES ===== */
 // India Standard Time = UTC+5:30, permanently. No DST ever.
 // We always derive IST from the system UTC clock using Intl.
@@ -82,6 +110,11 @@ function addTask(data) {
   tasks.unshift(task);
   saveTasks(tasks);
   lastMutation = Date.now(); syncToBackend();
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    var url = CONFIG.JARVIS_API_URL + '/tasks';
+    addPendingOp('POST', url);
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task) }).then(function (r) { if (r.ok) removePendingOp(url); }).catch(function () {});
+  }
   return task;
 }
 
@@ -93,6 +126,11 @@ function toggleTaskDone(id) {
     task.completedAt = task.done ? getWorldISO() : null;
     saveTasks(tasks);
     lastMutation = Date.now(); syncToBackend();
+    if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+      var url = CONFIG.JARVIS_API_URL + '/tasks/' + id + '/toggle';
+      addPendingOp('PATCH', url);
+      fetch(url, { method: 'PATCH' }).then(function (r) { if (r.ok) removePendingOp(url); }).catch(function () {});
+    }
   }
   return task;
 }
@@ -105,7 +143,9 @@ function deleteTask(id) {
   saveTasks(tasks);
   lastMutation = Date.now(); syncToBackend();
   if (navigator.onLine && CONFIG.JARVIS_API_URL) {
-    fetch(CONFIG.JARVIS_API_URL + '/tasks/' + id, { method: 'DELETE' }).catch(function () {});
+    var url = CONFIG.JARVIS_API_URL + '/tasks/' + id;
+    addPendingOp('DELETE', url);
+    fetch(url, { method: 'DELETE' }).then(function (r) { if (r.ok) removePendingOp(url); }).catch(function () {});
   }
   return removed;
 }
@@ -123,6 +163,11 @@ function addMemory(data) {
   memories.unshift(memory);
   saveMemories(memories);
   lastMutation = Date.now(); syncToBackend();
+  if (navigator.onLine && CONFIG.JARVIS_API_URL) {
+    var url = CONFIG.JARVIS_API_URL + '/memories';
+    addPendingOp('POST', url);
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(memory) }).then(function (r) { if (r.ok) removePendingOp(url); }).catch(function () {});
+  }
   return memory;
 }
 
@@ -134,7 +179,9 @@ function deleteMemory(id) {
   saveMemories(memories);
   lastMutation = Date.now(); syncToBackend();
   if (navigator.onLine && CONFIG.JARVIS_API_URL) {
-    fetch(CONFIG.JARVIS_API_URL + '/memories/' + id, { method: 'DELETE' }).catch(function () {});
+    var url = CONFIG.JARVIS_API_URL + '/memories/' + id;
+    addPendingOp('DELETE', url);
+    fetch(url, { method: 'DELETE' }).then(function (r) { if (r.ok) removePendingOp(url); }).catch(function () {});
   }
   return removed;
 }
@@ -649,6 +696,7 @@ function syncToBackend() {
 
 function flushSync() {
   if (syncInProgress) return;
+  if (pendingOps.length > 0) { setTimeout(flushSync, 2000); return; }
   syncInProgress = true;
 
   const tasks = getTasks();
@@ -679,7 +727,7 @@ function pullFromBackend() {
   if (!navigator.onLine) return;
   var apiUrl = CONFIG.JARVIS_API_URL;
   if (!apiUrl) return;
-  if (syncInProgress || syncQueue.length > 0) {
+  if (syncInProgress || syncQueue.length > 0 || pendingOps.length > 0) {
     setTimeout(pullFromBackend, 2000);
     return;
   }
@@ -936,10 +984,12 @@ let lastRolloverCheck = '';
 function init() {
   console.log('init');
   try {
+    processPendingOps(function () {
+      pullFromBackend();
+    });
     updateClock();
     setInterval(updateClock, 1000);
     rolloverOverdueTasks();
-    pullFromBackend();
     setInterval(pullFromBackend, 30000);
     setupEvents();
     navigateTo('dashboard');
